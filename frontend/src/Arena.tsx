@@ -135,25 +135,41 @@ export default function Arena({
 
   function onContextMenu(ev: React.MouseEvent<HTMLCanvasElement>) {
     ev.preventDefault();
+    ev.stopPropagation();
     if (!frame) return;
-    const rect = ev.currentTarget.getBoundingClientRect();
-    const p = {
-      x: Math.max(0, Math.min(1, (ev.clientX - rect.left) / rect.width)),
-      y: Math.max(0, Math.min(1, (ev.clientY - rect.top) / rect.height)),
-    };
 
-    let hit: { id: string; d: number; radius: number } | null = null;
+    const rect = ev.currentTarget.getBoundingClientRect();
+    const mouseX = ev.clientX - rect.left;
+    const mouseY = ev.clientY - rect.top;
+    const arenaScale = Math.min(rect.width, rect.height);
+
+    // Hit-test against the same size the canvas actually renders. The extra
+    // padding makes small items such as sound/light/odor easy to remove while
+    // still choosing the nearest object when elements overlap.
+    let hit: { id: string; distancePx: number } | null = null;
     for (const obj of frame.world.objects) {
-      const d = Math.hypot(obj.x - p.x, obj.y - p.y);
-      const radius = Math.max(0.035, obj.radius + 0.025);
-      if (d <= radius && (!hit || d < hit.d)) {
-        hit = { id: obj.id, d, radius };
+      const objectX = obj.x * rect.width;
+      const objectY = obj.y * rect.height;
+      const distancePx = Math.hypot(objectX - mouseX, objectY - mouseY);
+      const renderedRadiusPx = Math.max(5, obj.radius * arenaScale);
+      const hitRadiusPx = Math.max(14, renderedRadiusPx + 10);
+
+      if (
+        distancePx <= hitRadiusPx &&
+        (!hit || distancePx < hit.distancePx)
+      ) {
+        hit = { id: obj.id, distancePx };
       }
     }
+
     if (hit) onRemoveObject(hit.id);
   }
 
   function onPointerDown(ev: React.PointerEvent<HTMLCanvasElement>) {
+    // Only the primary/left button can place, select or drag. Right-click is
+    // reserved exclusively for deleting world elements.
+    if (ev.button !== 0) return;
+
     const p = point(ev);
     if (tool !== "inspect") {
       onPlace(tool, p.x, p.y);
