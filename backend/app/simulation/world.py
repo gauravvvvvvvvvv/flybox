@@ -126,17 +126,18 @@ class World:
                 return old_x, old_y, touch_side
         return x, y, touch_side
 
-    def feed(self, x: float, y: float, bite: float = 0.004) -> tuple[bool, float]:
+    def feed(self, x: float, y: float, bite: float = 0.004) -> tuple[bool, float, bool]:
         for obj in list(self.objects):
             if obj.kind != "food":
                 continue
             if math.hypot(x - obj.x, y - obj.y) < obj.radius + 0.028:
                 eaten = min(obj.amount, bite)
                 obj.amount -= eaten
-                if obj.amount <= 1e-6:
+                finished = obj.amount <= 1e-6
+                if finished:
                     self.objects.remove(obj)
-                return True, eaten
-        return False, 0.0
+                return True, eaten, finished
+        return False, 0.0, False
 
     def predator_hit(self, x: float, y: float) -> bool:
         return any(
