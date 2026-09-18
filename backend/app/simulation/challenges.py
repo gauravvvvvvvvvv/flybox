@@ -18,6 +18,17 @@ CHALLENGES = {
         "goal": "survive",
         "target": 60,
     },
+    "hunt": {
+        "name": "You vs Fly",
+        "description": "Use HAND to drag the predator. The agent wins if it survives 30 seconds.",
+        "goal": "survive",
+        "target": 30,
+    },
+    "braincar": {
+        "name": "Brain Car",
+        "description": "Put the selected connectome in a car body and race to the goal.",
+        "goal": "race",
+    },
     "hijack": {
         "name": "Connectome Hijack",
         "description": "Reach high descending-neuron activity using at most 5 manual stimulations.",
