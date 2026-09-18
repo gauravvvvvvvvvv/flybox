@@ -68,6 +68,14 @@ class InterventionManager:
             edge_idx = np.sort(rng.choice(n, size=count, replace=False))
             original = np.asarray(self.brain.weights[edge_idx]).copy()
             self.brain.weights[edge_idx] = 0
+            if getattr(self.brain, "device", "cpu") == "cuda":
+                from scipy import sparse
+                from cupyx.scipy import sparse as cusparse
+                matrix = sparse.csc_matrix(
+                    (self.brain.weights, self.brain.indices, self.brain.indptr),
+                    shape=(self.brain.n, self.brain.n),
+                )
+                self.brain._W = cusparse.csr_matrix(matrix.tocsr().astype(np.float32))
             self._lesions.append((edge_idx, original))
         else:
             raise ValueError(f"unsupported intervention: {kind}")
