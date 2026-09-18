@@ -1,12 +1,15 @@
 from __future__ import annotations
 
 import asyncio
+import base64
 from collections import deque
 from datetime import date
 import hashlib
+import json
 import os
 import time
 import uuid
+import zlib
 
 import numpy as np
 
@@ -501,6 +504,51 @@ class SimulationEngine:
             } for fly in self.flies.values()],
             "events": list(self.events),
         }
+
+    def share_code(self) -> str:
+        payload = {
+            "format": "flybox-share-v1",
+            "seed": self.seed,
+            "challenge_id": self.challenge_id,
+            "world": self.world.to_dict(),
+            "flies": [{
+                "id": fly.id,
+                "name": fly.name,
+                "seed": fly.seed,
+                "is_prime": fly.is_prime,
+                "body_type": fly.body_type,
+                "controller": fly.controller,
+                "position": [fly.x, fly.y],
+                "heading": fly.heading,
+                "energy": fly.energy,
+                "sensory_gain": fly.sensory_gain,
+                "interventions": fly.interventions.serialized(),
+            } for fly in self.flies.values()],
+        }
+        raw = json.dumps(payload, separators=(",", ":")).encode()
+        return base64.urlsafe_b64encode(zlib.compress(raw, 9)).decode().rstrip("=")
+
+    async def import_share_code(self, code: str):
+        try:
+            padded = code + "=" * (-len(code) % 4)
+            raw = zlib.decompress(base64.urlsafe_b64decode(padded.encode()))
+            payload = json.loads(raw)
+        except Exception as exc:
+            raise ValueError("invalid FLYBOX share code") from exc
+        if payload.get("format") != "flybox-share-v1":
+            raise ValueError("unsupported FLYBOX share code")
+        challenge_id = payload.get("challenge_id", "sandbox")
+        experiment = {
+            "format": "flybox-experiment-v2",
+            "seed": payload.get("seed", 64),
+            "world": payload.get("world", {}),
+            "flies": payload.get("flies", []),
+        }
+        await self.import_experiment(experiment)
+        if challenge_id in CHALLENGES:
+            self.challenge_id = challenge_id
+            self.challenge_started = self.t
+        self._event("shared box imported", "system")
 
     async def import_experiment(self, payload: dict):
         if payload.get("format") not in {"flybox-experiment-v1", "flybox-experiment-v2"}:
