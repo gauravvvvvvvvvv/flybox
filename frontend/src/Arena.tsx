@@ -55,6 +55,18 @@ export default function Arena({
     for (const obj of frame.world.objects) drawObject(ctx, obj, w, h, frame.t);
 
     for (const fly of frame.flies) {
+      if (fly.trail?.length > 1) {
+        ctx.beginPath();
+        fly.trail.forEach((p, i) => {
+          const px = p.x * w, py = p.y * h;
+          if (i === 0) ctx.moveTo(px, py);
+          else ctx.lineTo(px, py);
+        });
+        ctx.strokeStyle = fly.id === selectedFly ? "rgba(183,255,90,.34)" : "rgba(190,200,194,.12)";
+        ctx.lineWidth = fly.id === selectedFly ? 1.5 : 1;
+        ctx.stroke();
+      }
+
       const x = fly.x * w;
       const y = fly.y * h;
 
