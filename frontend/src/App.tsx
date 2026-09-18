@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import Arena, { type ArenaTool } from "./Arena";
 import BrainView from "./BrainView";
+import HomeDocs from "./HomeDocs";
 import { closeSession, connectFrames, del, get, post } from "./api";
 import type { Frame, Metadata, WorldKind } from "./types";
 
@@ -235,21 +236,12 @@ export default function App() {
 
   if (!entered) {
     return (
-      <main className="intro">
-        <div className="intro-grid" />
-        <div className="intro-content">
-          <div className="eyebrow">FLYBOX / REAL CONNECTOME, WEIRD PLAYGROUND</div>
-          <h1>Put a fly brain<br /><span>in anything.</span></h1>
-          <p>Feed it. Scare it. Race it. Drive it. Break it. Fork it. Listen to it. Then open the lab and see what the connectome actually did.</p>
-          <button className="enter" onClick={() => { setEntered(true); post("/api/simulation/resume").catch(() => {}); }}>
-            OPEN THE BOX
-          </button>
-          <div className="intro-pills">
-            <span>PLAYGROUND</span><span>CHALLENGES</span><span>BODY SWAPS</span><span>REAL FLYBRAIN</span>
-          </div>
-          <small>Neural dynamics come from a simplified connectome simulation. Game mechanics and experimental encoders/decoders are visibly labeled; FLYBOX does not claim biological behavior or consciousness.</small>
-        </div>
-      </main>
+      <HomeDocs
+        onEnter={() => {
+          setEntered(true);
+          post("/api/simulation/resume").catch((e) => setError(e instanceof Error ? e.message : String(e)));
+        }}
+      />
     );
   }
 
