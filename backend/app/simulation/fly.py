@@ -132,6 +132,103 @@ class FlyAgent:
         self.state = "IDLE"
         self.alive = True
 
+    def runtime_snapshot(self) -> dict:
+        if not self.mock and getattr(self.brain, "device", "cpu") != "cpu":
+            raise ValueError("exact checkpoints are currently supported only for CPU/mock FlyBrain")
+
+        brain_state = {
+            "fired": np.asarray(self.brain.fired).copy(),
+            "rng_state": copy.deepcopy(self.brain.rng.bit_generator.state),
+        }
+        if not self.mock:
+            brain_state.update({
+                "v": np.asarray(self.brain.v).copy(),
+                "steps": int(self.brain.steps),
+                "last_spike": None if getattr(self.brain, "last_spike", None) is None else np.asarray(self.brain.last_spike).copy(),
+            })
+
+        return {
+            "id": self.id,
+            "name": self.name,
+            "seed": self.seed,
+            "is_prime": self.is_prime,
+            "x": self.x,
+            "y": self.y,
+            "heading": self.heading,
+            "velocity": self.velocity,
+            "energy": self.energy,
+            "alive": self.alive,
+            "controller": self.controller,
+            "body_type": self.body_type,
+            "sensory_gain": self.sensory_gain,
+            "trajectory": copy.deepcopy(self.trajectory),
+            "previous_fired": self.previous_fired.copy(),
+            "touch_side": self.touch_side,
+            "previous_odor": self.previous_odor,
+            "food_eaten": self.food_eaten,
+            "escape_events": self.escape_events,
+            "last_escape": self.last_escape,
+            "state": self.state,
+            "manual_turn": self.manual_turn,
+            "manual_throttle": self.manual_throttle,
+            "manual_until": self.manual_until,
+            "game_rng_state": copy.deepcopy(self.rng.bit_generator.state),
+            "brain": brain_state,
+            "dn_trace": self.dn_trace.trace.copy(),
+            "motor_smooth": dict(self.motor.smooth),
+            "encoder_previous_size": dict(self.encoder.previous_size),
+            "encoder_last": dict(self.encoder.last),
+            "interventions": copy.deepcopy(self.interventions.serialized()),
+        }
+
+    def restore_runtime_snapshot(self, snapshot: dict) -> None:
+        if not self.mock and getattr(self.brain, "device", "cpu") != "cpu":
+            raise ValueError("exact checkpoint restore is currently supported only for CPU/mock FlyBrain")
+
+        self.interventions.restore_all_synapse_lesions()
+        self.brain.reset(self.seed)
+        self.dn_trace.reset()
+        self.interventions = InterventionManager(self.brain)
+        for item in snapshot.get("interventions", []):
+            if item.get("active") and item.get("type") in {"silence_population", "random_synapse_lesion"}:
+                self.interventions.apply(item, float(item.get("time", 0.0)))
+
+        brain_state = snapshot["brain"]
+        if not self.mock:
+            self.brain.v[...] = brain_state["v"]
+            self.brain.steps = int(brain_state["steps"])
+            if self.brain.last_spike is not None and brain_state.get("last_spike") is not None:
+                self.brain.last_spike[...] = brain_state["last_spike"]
+        self.brain.fired = np.asarray(brain_state["fired"]).copy()
+        self.brain.rng.bit_generator.state = copy.deepcopy(brain_state["rng_state"])
+
+        self.name = snapshot["name"]
+        self.x = float(snapshot["x"])
+        self.y = float(snapshot["y"])
+        self.heading = float(snapshot["heading"])
+        self.velocity = float(snapshot["velocity"])
+        self.energy = float(snapshot["energy"])
+        self.alive = bool(snapshot["alive"])
+        self.controller = snapshot["controller"]
+        self.body_type = snapshot["body_type"]
+        self.sensory_gain = float(snapshot["sensory_gain"])
+        self.trajectory = copy.deepcopy(snapshot["trajectory"])
+        self.previous_fired = np.asarray(snapshot["previous_fired"]).copy()
+        self.touch_side = snapshot["touch_side"]
+        self.previous_odor = float(snapshot["previous_odor"])
+        self.food_eaten = int(snapshot["food_eaten"])
+        self.escape_events = int(snapshot["escape_events"])
+        self.last_escape = float(snapshot["last_escape"])
+        self.state = snapshot["state"]
+        self.manual_turn = float(snapshot["manual_turn"])
+        self.manual_throttle = float(snapshot["manual_throttle"])
+        self.manual_until = float(snapshot["manual_until"])
+        self.rng.bit_generator.state = copy.deepcopy(snapshot["game_rng_state"])
+        self.dn_trace.trace[...] = snapshot["dn_trace"]
+        self.motor.smooth = dict(snapshot["motor_smooth"])
+        self.encoder.previous_size = dict(snapshot["encoder_previous_size"])
+        self.encoder.last = dict(snapshot["encoder_last"])
+
     def copy_runtime_state_to(self, other: "FlyAgent") -> bool:
         """Exact neural-state fork for CPU NumPy FlyBrain. Returns False when unsafe."""
         if self.mock and other.mock:
