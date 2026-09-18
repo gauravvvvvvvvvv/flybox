@@ -111,3 +111,21 @@ def test_random_world_is_seeded():
         assert aa == bb
 
     asyncio.run(run())
+
+
+def test_share_code_round_trip_and_brain_coupling():
+    async def run():
+        source = SimulationEngine(seed=11)
+        await source.add_fly(name="BETA")
+        link = await source.connect_brains("prime", next(k for k in source.flies if k != "prime"), "LC10a", 0.7)
+        assert link["kind"] == "experimental_artificial_coupling"
+        code = source.share_code()
+        assert isinstance(code, str) and len(code) > 20
+
+        target = SimulationEngine(seed=99)
+        await target.import_share_code(code)
+        assert target.seed == 11
+        assert len(target.flies) == 2
+        assert target.world.to_dict()["objects"] == source.world.to_dict()["objects"]
+
+    asyncio.run(run())
