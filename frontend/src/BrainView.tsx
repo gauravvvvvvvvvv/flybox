@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { API } from "./api";
+import { get } from "./api";
 import type { FlyFrame } from "./types";
 
 type StaticBrain = {
@@ -17,8 +17,7 @@ export default function BrainView({ fly }: { fly: FlyFrame | undefined }) {
   useEffect(() => {
     if (!fly) return;
     let cancelled = false;
-    fetch(`${API}/api/brain/${fly.id}/sample`)
-      .then((response) => response.ok ? response.json() : Promise.reject())
+    get(`/api/brain/${fly.id}/sample`)
       .then((data) => { if (!cancelled) setStructure(data); })
       .catch(() => { if (!cancelled) setStructure(null); });
     return () => { cancelled = true; };
