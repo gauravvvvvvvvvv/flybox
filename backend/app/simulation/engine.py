@@ -327,7 +327,12 @@ class SimulationEngine:
             self.running = False
             self.seed = int(checkpoint["seed"])
             self.t = float(checkpoint["t"])
-            self.world = World(seed=int(checkpoint["world"].get("seed", self.seed)))
+            self.world = World(
+                seed=int(checkpoint["world"].get("seed", self.seed)),
+                daylight=float(checkpoint["world"].get("daylight", 1.0)),
+                wind_x=float(checkpoint["world"].get("wind_x", 0.0)),
+                wind_y=float(checkpoint["world"].get("wind_y", 0.0)),
+            )
             for item in checkpoint["world"].get("objects", []):
                 self.world.add(
                     item["kind"],
@@ -478,6 +483,16 @@ class SimulationEngine:
         if not fly:
             raise ValueError(f"unknown fly: {fly_id}")
         return fly
+
+    async def set_environment(self, daylight: float, wind_x: float, wind_y: float):
+        async with self._lock:
+            self.world.daylight = float(np.clip(daylight, 0, 1))
+            self.world.wind_x = float(np.clip(wind_x, -0.5, 0.5))
+            self.world.wind_y = float(np.clip(wind_y, -0.5, 0.5))
+            self._event(
+                f"environment: daylight {self.world.daylight:.2f}, wind ({self.world.wind_x:.2f}, {self.world.wind_y:.2f})",
+                "world",
+            )
 
     async def add_world_object(self, payload: dict) -> dict:
         async with self._lock:
@@ -776,8 +791,14 @@ class SimulationEngine:
             self.running = False
             self.seed = int(payload.get("seed", 64))
             self.t = 0.0
-            self.world = World(seed=self.seed)
-            for item in payload.get("world", {}).get("objects", []):
+            world_payload = payload.get("world", {})
+            self.world = World(
+                seed=self.seed,
+                daylight=float(world_payload.get("daylight", 1.0)),
+                wind_x=float(world_payload.get("wind_x", 0.0)),
+                wind_y=float(world_payload.get("wind_y", 0.0)),
+            )
+            for item in world_payload.get("objects", []):
                 self.world.add(
                     item["kind"],
                     float(item["x"]),
