@@ -12,6 +12,7 @@ const bodies = ["fly", "car", "bot", "drone", "walker", "ship", "synth"];
 const tools: { kind: ArenaTool; label: string }[] = [
   { kind: "inspect", label: "HAND" },
   { kind: "food", label: "FRUIT" },
+  { kind: "odor", label: "ODOR PAINT" },
   { kind: "stimulus", label: "TARGET" },
   { kind: "loom", label: "LOOM" },
   { kind: "predator", label: "PREDATOR" },
@@ -160,6 +161,7 @@ export default function App() {
   async function place(kind: WorldKind, x: number, y: number) {
     const presets: Record<WorldKind, Record<string, unknown>> = {
       food: { intensity: 1, radius: .026, amount: 1, label: "fruit" },
+      odor: { intensity: .72, radius: .018, amount: .55, label: "odor" },
       stimulus: { intensity: .75, radius: .032, label: "target" },
       obstacle: { intensity: 0, radius: .065 },
       loom: { intensity: 1, radius: .038 },
@@ -169,6 +171,13 @@ export default function App() {
       goal: { intensity: 1, radius: .042, label: "finish" },
     };
     await safe(() => post("/api/world", { kind, x, y, ...presets[kind] }));
+  }
+
+  function moveFly(id: string, x: number, y: number) {
+    const now = performance.now();
+    if (now - lastMove.current < 45) return;
+    lastMove.current = now;
+    post(`/api/flies/${id}/move?x=${x}&y=${y}`).catch(() => {});
   }
 
   function moveObject(id: string, x: number, y: number) {
@@ -297,6 +306,7 @@ export default function App() {
             neuralOverlay={neuralOverlay}
             onPlace={place}
             onMoveObject={moveObject}
+            onMoveFly={moveFly}
             onSelectFly={setSelectedFly}
           />
 
@@ -477,7 +487,9 @@ export default function App() {
                 <div className="section-label">BUILD A TINY WORLD</div>
                 <h3>Pick a tool. Click the arena. Drag objects with HAND.</h3>
                 <div className="build-guide">
-                  <p>🍌 <b>Fruit</b> emits an experimental ORN_DM1/DM2 odor field.</p>
+                  <p>🍌 <b>Fruit</b> emits an experimental ORN_DM1/DM2 odor field and can be eaten.</p>
+                  <p>〰 <b>Odor Paint</b> lets you draw non-edible ORN_DM1/DM2 smell trails directly onto the arena.</p>
+                  <p>🖐 <b>Hand</b> can grab agents or drag world objects while the simulation is live.</p>
                   <p>⚫ <b>Loom</b> uses angular growth → LPLC2; close threats also drive LC4.</p>
                   <p>🔊 <b>Sound</b> pulses JO-A/JO-B auditory populations.</p>
                   <p>💡 <b>Light</b> projects onto FlyBrain photoreceptor azimuths.</p>
