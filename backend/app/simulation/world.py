@@ -110,6 +110,35 @@ class World:
                 sound.append(rel)
         return {"visual": visual, "food": food, "sound": sound}
 
+    def bounce_bounds(
+        self,
+        x: float,
+        y: float,
+        heading: float,
+        padding: float = 0.02,
+    ) -> tuple[float, float, float, bool]:
+        """Reflect an embodied agent off the arena boundary instead of pinning it there."""
+        bounced = False
+        if x < padding:
+            x = padding + 0.002
+            heading = math.pi - heading
+            bounced = True
+        elif x > 1.0 - padding:
+            x = 1.0 - padding - 0.002
+            heading = math.pi - heading
+            bounced = True
+
+        if y < padding:
+            y = padding + 0.002
+            heading = -heading
+            bounced = True
+        elif y > 1.0 - padding:
+            y = 1.0 - padding - 0.002
+            heading = -heading
+            bounced = True
+
+        return x, y, heading % (2 * math.pi), bounced
+
     def collide_and_clamp(
         self,
         x: float,
