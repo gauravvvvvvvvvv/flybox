@@ -6,6 +6,7 @@ from pydantic import BaseModel, Field
 
 WorldKind = Literal[
     "food",
+    "odor",
     "stimulus",
     "obstacle",
     "loom",
