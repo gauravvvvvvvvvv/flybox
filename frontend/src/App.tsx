@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import Arena, { type ArenaTool } from "./Arena";
 import BrainView from "./BrainView";
-import { API, WS, del, post } from "./api";
+import { WS, apiUrl, closeSession, del, get, post } from "./api";
 import type { Frame, Metadata, WorldKind } from "./types";
 
 const populations = [
@@ -48,18 +48,18 @@ export default function App() {
   const audio = useRef<{ ctx: AudioContext; osc: OscillatorNode; gain: GainNode } | null>(null);
 
   useEffect(() => {
-    const hash = window.location.hash;
-    if (hash.startsWith("#box=")) {
-      const code = hash.slice(5);
-      post("/api/share/import", { code }).catch((e) => setError(String(e)));
-    }
+    get("/api/metadata")
+      .then(setMetadata)
+      .catch((e) => setError(e instanceof Error ? e.message : String(e)));
   }, []);
 
   useEffect(() => {
-    fetch(`${API}/api/metadata`)
-      .then((r) => r.json())
-      .then(setMetadata)
-      .catch(() => {});
+    const discard = () => closeSession();
+    window.addEventListener("pagehide", discard);
+    return () => {
+      window.removeEventListener("pagehide", discard);
+      closeSession();
+    };
   }, []);
 
   useEffect(() => {
@@ -94,8 +94,7 @@ export default function App() {
 
   useEffect(() => {
     const refresh = () => {
-      fetch(`${API}/api/populations/${selectedFly}`)
-        .then((r) => r.ok ? r.json() : Promise.reject())
+      get(`/api/populations/${selectedFly}`)
         .then((d) => setPopulationRows(d.populations))
         .catch(() => {});
     };
@@ -235,19 +234,6 @@ export default function App() {
     setConsoleText("");
   }
 
-  async function shareBox() {
-    if (!frame) return;
-    try {
-      const response = await fetch(`${API}/api/share`);
-      if (!response.ok) throw new Error(await response.text());
-      const { code } = await response.json();
-      const url = `${window.location.origin}${window.location.pathname}#box=${code}`;
-      await navigator.clipboard?.writeText(url);
-    } catch (e) {
-      setError(e instanceof Error ? e.message : String(e));
-    }
-  }
-
   if (!entered) {
     return (
       <main className="intro">
@@ -278,7 +264,7 @@ export default function App() {
           ))}
         </nav>
         <div className="status"><span className="live-dot" /> {frame?.running ? "LIVE" : "PAUSED"}</div>
-        <div className="header-stat">{frame?.flies.length ?? 0} AGENTS · {frame?.world.objects.length ?? 0} OBJECTS{(frame?.viewers ?? 0) > 1 ? ` · PARTY ${frame?.viewers}` : ""}</div>
+        <div className="header-stat">{frame?.flies.length ?? 0} AGENTS · {frame?.world.objects.length ?? 0} OBJECTS · EPHEMERAL</div>
         {frame?.mock && <div className="mock">MOCK MODE</div>}
       </header>
 
@@ -506,7 +492,7 @@ export default function App() {
                   <button onClick={() => safe(() => post("/api/world/environment", { daylight: frame?.world.daylight ?? 1, wind_x: -0.08, wind_y: 0 }))}>← WIND</button>
                   <button onClick={() => safe(() => post("/api/world/environment", { daylight: frame?.world.daylight ?? 1, wind_x: 0.08, wind_y: 0 }))}>WIND →</button>
                 </div>
-                <button className="wide" onClick={shareBox}>COPY SHARE LINK</button>
+                <div className="session-note">THIS BOX EXISTS ONLY FOR THIS PAGE. LEAVING DISCARDS IT.</div>
                 <div className="seed">SEED {frame?.world.seed ?? "—"}</div>
               </section>
             </>
@@ -558,7 +544,7 @@ export default function App() {
           <button onClick={() => safe(() => post("/api/time/checkpoint"))}>SAVE MOMENT</button>
           <button disabled={(frame?.checkpoints.length ?? 0) === 0} onClick={() => safe(() => post("/api/time/rewind"))}>↶ REWIND</button>
           <button onClick={() => setConsoleOpen(!consoleOpen)}>&gt;_ CONSOLE</button>
-          <a href={`${API}/api/experiments/export`} target="_blank">EXPORT JSON</a>
+          <a href={apiUrl("/api/experiments/export")} target="_blank">EXPORT JSON</a>
         </div>
         {(frame?.checkpoints.length ?? 0) > 0 && (
           <div className="checkpoint-strip">
