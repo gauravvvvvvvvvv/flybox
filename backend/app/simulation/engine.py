@@ -225,6 +225,7 @@ class SimulationEngine:
             self.challenge_winner = None
             self.challenge_actions = 0
             self.mystery_secret = None
+            self.couplings.clear()
             self._default_world()
             self._create_primary()
             self.flies["prime"].controller = controller
@@ -678,6 +679,7 @@ class SimulationEngine:
             self.flies = {}
             self._last_frames = {}
             self.events.clear()
+            self.couplings.clear()
             self._seen_food.clear()
             self._seen_escape.clear()
             self._seen_alive.clear()
