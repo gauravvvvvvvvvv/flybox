@@ -9,7 +9,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
 
-from .models.schemas import ConsoleIn, InterventionIn, ManualDriveIn, RenameIn, WorldObjectIn
+from .models.schemas import ConsoleIn, InterventionIn, ManualDriveIn, RenameIn, ShareCodeIn, WorldObjectIn
 from .simulation.challenges import CHALLENGES
 from .simulation.engine import SimulationEngine
 
@@ -262,6 +262,20 @@ async def reveal_mystery():
 async def console(payload: ConsoleIn):
     try:
         return await get_engine().console(payload.command)
+    except ValueError as exc:
+        raise HTTPException(400, str(exc)) from exc
+
+
+@app.get("/api/share")
+async def share_box():
+    return {"code": get_engine().share_code()}
+
+
+@app.post("/api/share/import")
+async def import_share_box(payload: ShareCodeIn):
+    try:
+        await get_engine().import_share_code(payload.code)
+        return get_engine().frame_payload()
     except ValueError as exc:
         raise HTTPException(400, str(exc)) from exc
 
