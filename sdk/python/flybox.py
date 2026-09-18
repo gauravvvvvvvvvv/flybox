@@ -2,12 +2,14 @@ from __future__ import annotations
 
 import json
 import urllib.request
-from dataclasses import dataclass
+import uuid
+from dataclasses import dataclass, field
 
 
 @dataclass
 class Flybox:
     base_url: str = "http://localhost:8000"
+    session_id: str = field(default_factory=lambda: str(uuid.uuid4()))
 
     def _request(self, path: str, method: str = "GET", payload: dict | None = None):
         data = None if payload is None else json.dumps(payload).encode()
@@ -15,7 +17,10 @@ class Flybox:
             self.base_url.rstrip("/") + path,
             data=data,
             method=method,
-            headers={"Content-Type": "application/json"} if data is not None else {},
+            headers={
+                "X-Flybox-Session": self.session_id,
+                **({"Content-Type": "application/json"} if data is not None else {}),
+            },
         )
         with urllib.request.urlopen(req) as response:
             return json.loads(response.read())
@@ -61,3 +66,9 @@ class Flybox:
 
     def export(self):
         return self._request("/api/experiments/export")
+
+    def close(self):
+        try:
+            return self._request("/api/session/close", "POST")
+        except Exception:
+            return None
