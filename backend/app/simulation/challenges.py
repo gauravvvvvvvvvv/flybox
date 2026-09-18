@@ -8,7 +8,7 @@ CHALLENGES = {
     },
     "food_run": {
         "name": "Snack Attack",
-        "description": "Get the agents to take 3 food bites.",
+        "description": "Get the agents to finish 3 food items.",
         "goal": "food",
         "target": 3,
     },
