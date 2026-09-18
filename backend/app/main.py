@@ -7,7 +7,7 @@ from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, HTTPException, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse\nfrom fastapi.staticfiles import StaticFiles
 
 from .models.schemas import InterventionIn, WorldObjectIn
 from .simulation.engine import SimulationEngine
@@ -180,6 +180,9 @@ async def import_experiment(payload: dict):
 @app.websocket("/ws")
 async def websocket_endpoint(ws: WebSocket):
     await ws.accept()
+    connected_engine = engine
+    if connected_engine is not None:
+        connected_engine.active_clients += 1
     try:
         while True:
             sim = engine
@@ -191,3 +194,11 @@ async def websocket_endpoint(ws: WebSocket):
             await asyncio.sleep(1 / 20)
     except WebSocketDisconnect:
         return
+    finally:
+        if connected_engine is not None:
+            connected_engine.active_clients = max(0, connected_engine.active_clients - 1)
+
+
+static_dir = os.getenv("FLYLAB_STATIC_DIR")
+if static_dir and os.path.isdir(static_dir):
+    app.mount("/", StaticFiles(directory=static_dir, html=True), name="frontend")
