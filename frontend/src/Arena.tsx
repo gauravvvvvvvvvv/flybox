@@ -11,6 +11,7 @@ type Props = {
   onPlace: (kind: WorldKind, x: number, y: number) => void;
   onMoveObject: (id: string, x: number, y: number) => void;
   onMoveFly: (id: string, x: number, y: number) => void;
+  onRemoveObject: (id: string) => void;
   onSelectFly: (id: string) => void;
 };
 
@@ -22,6 +23,7 @@ export default function Arena({
   onPlace,
   onMoveObject,
   onMoveFly,
+  onRemoveObject,
   onSelectFly,
 }: Props) {
   const ref = useRef<HTMLCanvasElement>(null);
@@ -59,6 +61,7 @@ export default function Arena({
     }
 
     for (const obj of frame.world.objects) drawObject(ctx, obj, w, h, frame.t);
+    drawObjectLabels(ctx, frame.world.objects, w, h);
 
     for (const fly of frame.flies) {
       if (fly.trail?.length > 1) {
@@ -130,6 +133,26 @@ export default function Arena({
     };
   }
 
+  function onContextMenu(ev: React.MouseEvent<HTMLCanvasElement>) {
+    ev.preventDefault();
+    if (!frame) return;
+    const rect = ev.currentTarget.getBoundingClientRect();
+    const p = {
+      x: Math.max(0, Math.min(1, (ev.clientX - rect.left) / rect.width)),
+      y: Math.max(0, Math.min(1, (ev.clientY - rect.top) / rect.height)),
+    };
+
+    let hit: { id: string; d: number; radius: number } | null = null;
+    for (const obj of frame.world.objects) {
+      const d = Math.hypot(obj.x - p.x, obj.y - p.y);
+      const radius = Math.max(0.035, obj.radius + 0.025);
+      if (d <= radius && (!hit || d < hit.d)) {
+        hit = { id: obj.id, d, radius };
+      }
+    }
+    if (hit) onRemoveObject(hit.id);
+  }
+
   function onPointerDown(ev: React.PointerEvent<HTMLCanvasElement>) {
     const p = point(ev);
     if (tool !== "inspect") {
@@ -198,6 +221,7 @@ export default function Arena({
       onPointerMove={onPointerMove}
       onPointerUp={onPointerUp}
       onPointerCancel={onPointerUp}
+      onContextMenu={onContextMenu}
     />
   );
 }
@@ -258,6 +282,56 @@ function drawObject(ctx: CanvasRenderingContext2D, obj: Frame["world"]["objects"
     ctx.lineTo(x - r * 1.4, y + r * 1.4);
     ctx.stroke();
   }
+}
+
+function drawObjectLabels(
+  ctx: CanvasRenderingContext2D,
+  objects: Frame["world"]["objects"],
+  w: number,
+  h: number,
+) {
+  const odorObjects = objects.filter((obj) => obj.kind === "odor");
+  const odorLabelIds = new Set(
+    odorObjects
+      .filter((_, index) => index % Math.max(1, Math.ceil(odorObjects.length / 4)) === 0)
+      .map((obj) => obj.id),
+  );
+
+  for (const obj of objects) {
+    if (obj.kind === "odor" && !odorLabelIds.has(obj.id)) continue;
+
+    const x = obj.x * w;
+    const y = obj.y * h;
+    const label = objectLabel(obj);
+    ctx.font = "700 9px ui-monospace, monospace";
+    const textWidth = ctx.measureText(label).width;
+    const boxW = textWidth + 10;
+    const boxH = 16;
+    const left = Math.min(w - boxW - 4, Math.max(4, x - boxW / 2));
+    const top = Math.min(h - boxH - 4, Math.max(4, y - Math.max(18, obj.radius * Math.min(w, h) + 19)));
+
+    ctx.fillStyle = "rgba(5,8,6,.82)";
+    ctx.fillRect(left, top, boxW, boxH);
+    ctx.strokeStyle = "rgba(205,224,211,.18)";
+    ctx.strokeRect(left + .5, top + .5, boxW - 1, boxH - 1);
+    ctx.fillStyle = "#c7d2ca";
+    ctx.fillText(label, left + 5, top + 11);
+  }
+}
+
+function objectLabel(obj: Frame["world"]["objects"][number]) {
+  if (obj.label) return obj.label.toUpperCase();
+  return ({
+    food: "FRUIT",
+    odor: "ODOR",
+    stimulus: "TARGET",
+    obstacle: "WALL",
+    loom: "LOOM",
+    sound: "SOUND",
+    predator: "PREDATOR",
+    light: "LIGHT",
+    goal: "GOAL",
+  } as Record<string, string>)[obj.kind] ?? obj.kind.toUpperCase();
 }
 
 function drawBody(ctx: CanvasRenderingContext2D, body: string, prime: boolean) {
