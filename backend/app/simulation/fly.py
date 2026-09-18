@@ -89,6 +89,84 @@ class FlyAgent:
             name: np.asarray(self.brain.cells([name]), dtype=np.int64)
             for name in KNOWN_POPS
         }
+        self._prepare_brain_view()
+
+    def _prepare_brain_view(self) -> None:
+        self._brain_norm: np.ndarray | None = None
+        self._brain_static_points: list[list[float | int]] = []
+        self._brain_mapped = 0
+        self._brain_view_kind = "unavailable"
+
+        positions = getattr(self.brain, "positions", None)
+        if positions is None:
+            self._brain_view_kind = "mock-unavailable" if self.mock else "unavailable"
+            return
+
+        positions = np.asarray(positions)
+        if positions.ndim != 2 or positions.shape[0] != self.brain.n or positions.shape[1] < 3:
+            return
+
+        ok = ~np.isnan(positions[:, :3]).any(axis=1)
+        ids = np.flatnonzero(ok)
+        if ids.size == 0:
+            return
+
+        # Same anatomical projection used by FlyBrain's own dashboard:
+        # EM x = left/right; z = long brain->nerve-cord axis.
+        xy = positions[ok][:, [0, 2]].astype(np.float32, copy=True)
+        side = np.asarray(getattr(self.brain, "side", np.array([""] * self.brain.n)))[ok]
+        left = side == "L"
+        right = side == "R"
+        if left.any() and right.any() and np.nanmean(xy[right, 0]) < np.nanmean(xy[left, 0]):
+            xy[:, 0] *= -1
+
+        lo = np.percentile(xy, 0.2, axis=0)
+        hi = np.percentile(xy, 99.8, axis=0)
+        span = hi - lo
+        scale = float(max(span.max(), 1e-6))
+        pad = (scale - span) / 2.0
+        norm = np.clip((xy - lo + pad) / scale, 0, 1)
+
+        full = np.full((self.brain.n, 2), np.nan, dtype=np.float32)
+        full[ids] = norm
+        self._brain_norm = full
+        self._brain_mapped = int(ids.size)
+        self._brain_view_kind = "anatomical"
+
+        sample_count = min(3500, ids.size)
+        pick = np.linspace(0, ids.size - 1, sample_count, dtype=np.int64)
+        chosen = ids[pick]
+        coords = full[chosen]
+        self._brain_static_points = [
+            [int(neuron_id), round(float(pos[0]), 4), round(float(pos[1]), 4)]
+            for neuron_id, pos in zip(chosen, coords)
+        ]
+
+    def brain_view_static(self) -> dict:
+        return {
+            "kind": self._brain_view_kind,
+            "projection": "MaleCNS soma positions projected on EM x/z axes" if self._brain_view_kind == "anatomical" else None,
+            "mapped": self._brain_mapped,
+            "neurons": int(self.brain.n),
+            "points": self._brain_static_points,
+        }
+
+    def _brain_firing_positions(self, fired: np.ndarray, limit: int = 512) -> list[list[float | int]]:
+        if self._brain_norm is None or fired.size == 0:
+            return []
+        fired = np.asarray(fired, dtype=np.int64)
+        coords = self._brain_norm[fired]
+        valid = ~np.isnan(coords).any(axis=1)
+        fired = fired[valid]
+        coords = coords[valid]
+        if fired.size > limit:
+            pick = np.linspace(0, fired.size - 1, limit, dtype=np.int64)
+            fired = fired[pick]
+            coords = coords[pick]
+        return [
+            [int(neuron_id), round(float(pos[0]), 4), round(float(pos[1]), 4)]
+            for neuron_id, pos in zip(fired, coords)
+        ]
 
     @property
     def dt(self) -> float:
@@ -454,6 +532,11 @@ class FlyAgent:
             "assists": assists,
             "trail": self.trajectory[-180:],
             "sampled_fired": fired_arr[:256].astype(int).tolist(),
+            "brain_view": {
+                "kind": self._brain_view_kind,
+                "mapped": self._brain_mapped,
+                "firing_positions": self._brain_firing_positions(fired_arr),
+            },
             "interventions": self.interventions.serialized()[-8:],
         }
 
