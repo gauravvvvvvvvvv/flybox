@@ -9,7 +9,8 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
 
-from .models.schemas import BrainCouplingIn, ConsoleIn, EnvironmentIn, InterventionIn, ManualDriveIn, RenameIn, ShareCodeIn, WorldObjectIn
+from .models.schemas import BatchProbeIn, BrainCouplingIn, ConsoleIn, EnvironmentIn, InterventionIn, ManualDriveIn, RenameIn, ShareCodeIn, WorldObjectIn
+from .simulation.batch import run_batch_probe
 from .simulation.challenges import CHALLENGES
 from .simulation.engine import SimulationEngine
 
@@ -115,8 +116,8 @@ async def reset():
 @app.post("/api/simulation/speed/{value}")
 async def speed(value: float):
     sim = get_engine()
-    if value not in {0.25, 1, 2, 5, 10}:
-        raise HTTPException(400, "speed must be 0.25, 1, 2, 5, or 10")
+    if value not in {0.05, 0.25, 1, 2, 5, 10}:
+        raise HTTPException(400, "speed must be 0.05, 0.25, 1, 2, 5, or 10")
     sim.speed = value
     return {"speed": value}
 
@@ -251,6 +252,21 @@ async def sensory_gain(fly_id: str, gain: float):
         return {"gain": gain}
     except ValueError as exc:
         raise HTTPException(404, str(exc)) from exc
+
+
+@app.post("/api/batch/probe")
+async def batch_probe(payload: BatchProbeIn):
+    try:
+        return await asyncio.to_thread(
+            run_batch_probe,
+            payload.population,
+            payload.amount,
+            payload.steps,
+            payload.replicates,
+            payload.seed,
+        )
+    except (ValueError, RuntimeError) as exc:
+        raise HTTPException(400, str(exc)) from exc
 
 
 @app.post("/api/couplings")
