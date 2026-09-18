@@ -126,3 +126,7 @@ aside { padding: 18px; background: #0b0e0c; }
   .toolbar { flex-wrap:wrap; }
   .toolbar-spacer { flex-basis:100%; height:0; }
 }
+
+.compare-row { display:grid; gap:4px; padding:8px 0; border-bottom:1px solid #1b211d; font:10px ui-monospace,monospace; }
+.compare-row span { color:#9ba69f; }
+.compare-row b { color:#c8ff7b; font-weight:600; }
