@@ -535,3 +535,7 @@ aside { padding: 18px; background: #0b0e0c; }
   }
   .home-arrow { transform: rotate(90deg); justify-self: center; }
 }
+
+.home-live-url { color:#657168; text-decoration:none; font:600 9px ui-monospace,monospace; letter-spacing:.04em; }
+.home-live-url:hover { color:#b6ff5a; }
+@media (max-width:760px) { .home-live-url { display:none; } }
