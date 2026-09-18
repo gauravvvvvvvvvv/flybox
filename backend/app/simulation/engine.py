@@ -15,6 +15,7 @@ import numpy as np
 
 from .challenges import ACHIEVEMENTS, CHALLENGES
 from .fly import BODY_SPEED, FlyAgent
+from .measurements import jaccard_distance
 from .provenance import MOTOR_PROVENANCE, PROVENANCE, SENSORY_PROVENANCE
 from .world import World
 
@@ -152,6 +153,23 @@ class SimulationEngine:
         self.challenge_completed = True
         self._event(f"CHALLENGE COMPLETE: {reason}", "challenge")
 
+    def comparisons(self) -> list[dict]:
+        agents = list(self.flies.values())
+        out: list[dict] = []
+        for i in range(len(agents)):
+            for j in range(i + 1, len(agents)):
+                a, b = agents[i], agents[j]
+                out.append({
+                    "a": a.id,
+                    "b": b.id,
+                    "a_name": a.name,
+                    "b_name": b.name,
+                    "neural_divergence": jaccard_distance(a.previous_fired, b.previous_fired),
+                    "behavioral_divergence": float(np.hypot(a.x - b.x, a.y - b.y)),
+                    "energy_delta": abs(a.energy - b.energy),
+                })
+        return out
+
     def challenge_state(self) -> dict:
         challenge = CHALLENGES[self.challenge_id]
         return {
@@ -184,6 +202,7 @@ class SimulationEngine:
                 for key in sorted(self.achievements)
             ],
             "couplings": list(self.couplings),
+            "comparisons": self.comparisons(),
         }
 
     async def reset(self):
