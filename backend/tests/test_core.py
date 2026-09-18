@@ -186,3 +186,14 @@ def test_play_edge_reflex_turns_inward_before_bounce():
     turn, _, assists = fly._play_assists(snapshot, 0.0, 0.0)
     assert abs(assists["edge"]) > 0.10
     assert abs(turn) > 0.10
+
+
+def test_obstacle_drives_lplc1_encoder_before_touch():
+    brain = MockBrain(seed=12)
+    enc = SensoryEncoder(brain)
+    world = World(seed=1)
+    world.add("obstacle", 0.58, 0.51, radius=0.05)
+    snapshot = world.sensory_snapshot(0.4, 0.5, 0.0, 0.0)
+    inject, _, senses = enc.encode(snapshot, 1.0, 1.0, None)
+    assert senses["obstacle"] > 0
+    assert inject
