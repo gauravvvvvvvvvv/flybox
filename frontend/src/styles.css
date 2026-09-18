@@ -130,3 +130,6 @@ aside { padding: 18px; background: #0b0e0c; }
 .compare-row { display:grid; gap:4px; padding:8px 0; border-bottom:1px solid #1b211d; font:10px ui-monospace,monospace; }
 .compare-row span { color:#9ba69f; }
 .compare-row b { color:#c8ff7b; font-weight:600; }
+
+.checkpoint-strip { display:flex; gap:6px; padding:7px 14px; overflow-x:auto; border-bottom:1px solid #1d241f; background:#0a0d0b; }
+.checkpoint-strip button { white-space:nowrap; color:#bda8ff; border-color:#332b45; }
