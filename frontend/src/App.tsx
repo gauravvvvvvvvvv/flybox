@@ -445,6 +445,17 @@ export default function App() {
                 <button className="wide" onClick={() => safe(() => post(`/api/flies/${selectedFly}/fork`))}>FORK THIS BRAIN NOW</button>
                 <button className="wide" onClick={() => safe(() => post("/api/flies?clone_prime=true&body_type=car&name=BRAINCAR"))}>SPAWN BRAIN CAR</button>
                 <button className="wide" onClick={() => safe(() => post("/api/flies?body_type=synth&name=SYNTHFLY"))}>SPAWN SYNTH BRAIN</button>
+                <button
+                  className="wide"
+                  disabled={(frame?.flies.length ?? 0) < 2}
+                  onClick={() => {
+                    const other = frame?.flies.find((item) => item.id !== selectedFly);
+                    if (other) safe(() => post("/api/couplings", { source: selectedFly, target: other.id, population: "LC10a", gain: 0.7 }));
+                  }}
+                >
+                  CONNECT THIS BRAIN → ANOTHER
+                </button>
+                {(frame?.couplings.length ?? 0) > 0 && <button className="wide" onClick={() => safe(() => del("/api/couplings"))}>DISCONNECT BRAINS</button>}
                 <button className="danger wide" onClick={() => safe(() => post(`/api/flies/${selectedFly}/interventions`, { type: "random_synapse_lesion", fraction: 0.1, seed: Math.floor((frame?.world.seed ?? 64) % 100000) }))}>CHAOS BUTTON</button>
               </section>
               <section className="control-section">
