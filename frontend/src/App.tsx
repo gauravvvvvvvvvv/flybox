@@ -371,6 +371,7 @@ export default function App() {
                 <div className="section-label">WHAT IT SENSES</div>
                 <Signal label="FOOD SMELL" value={fly?.senses?.food_odor ?? 0} />
                 <Signal label="TARGET" value={fly?.senses?.target ?? 0} />
+                <Signal label="OBSTACLE" value={fly?.senses?.obstacle ?? 0} />
                 <Signal label="LOOM" value={fly?.senses?.loom ?? 0} />
                 <Signal label="DANGER" value={fly?.senses?.threat ?? 0} />
                 <Signal label="SOUND" value={fly?.senses?.sound ?? 0} />
