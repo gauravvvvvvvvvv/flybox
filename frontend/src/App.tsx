@@ -365,6 +365,18 @@ export default function App() {
                 <Metric label="JACCARD Δ" value={fly ? fly.firing_jaccard_distance.toFixed(3) : "—"} />
               </div>
 
+              {(frame?.comparisons.length ?? 0) > 0 && (
+                <section className="control-section">
+                  <div className="section-label">LIVE A/B DIVERGENCE</div>
+                  {frame?.comparisons.slice(0, 4).map((row) => (
+                    <div className="compare-row" key={row.a + row.b}>
+                      <span>{row.a_name} ↔ {row.b_name}</span>
+                      <b>NEURAL {row.neural_divergence.toFixed(2)} · SPACE {row.behavioral_divergence.toFixed(2)}</b>
+                    </div>
+                  ))}
+                </section>
+              )}
+
               <section className="control-section">
                 <div className="section-label">NAMED MOTOR READOUT</div>
                 <Signal label="FORWARD · DNg100" value={fly?.motor?.forward ?? 0} max={20} />
