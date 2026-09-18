@@ -9,7 +9,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
 
-from .models.schemas import BrainCouplingIn, ConsoleIn, InterventionIn, ManualDriveIn, RenameIn, ShareCodeIn, WorldObjectIn
+from .models.schemas import BrainCouplingIn, ConsoleIn, EnvironmentIn, InterventionIn, ManualDriveIn, RenameIn, ShareCodeIn, WorldObjectIn
 from .simulation.challenges import CHALLENGES
 from .simulation.engine import SimulationEngine
 
@@ -182,6 +182,12 @@ async def drive(fly_id: str, payload: ManualDriveIn):
         return {"ok": True}
     except ValueError as exc:
         raise HTTPException(404, str(exc)) from exc
+
+
+@app.post("/api/world/environment")
+async def set_environment(payload: EnvironmentIn):
+    await get_engine().set_environment(payload.daylight, payload.wind_x, payload.wind_y)
+    return get_engine().frame_payload()
 
 
 @app.post("/api/world")
