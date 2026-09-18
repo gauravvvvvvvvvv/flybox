@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import Arena, { type ArenaTool } from "./Arena";
 import BrainView from "./BrainView";
-import { WS, apiUrl, closeSession, del, get, post } from "./api";
+import { closeSession, connectFrames, del, get, post } from "./api";
 import type { Frame, Metadata, WorldKind } from "./types";
 
 const populations = [
@@ -64,33 +64,13 @@ export default function App() {
 
   useEffect(() => {
     if (!entered) return;
-    let socket: WebSocket | null = null;
-    let reconnectTimer: number | null = null;
-    let stopped = false;
-
-    const connect = () => {
-      if (stopped) return;
-      socket = new WebSocket(WS);
-      socket.onopen = () => setError(null);
-      socket.onmessage = (event) => {
-        const data = JSON.parse(event.data);
-        if (data.type === "frame") setFrame(data);
-        if (data.type === "error") {
-          setError(data.message + (data.error ? ` — ${data.error}` : ""));
-        }
-      };
-      socket.onerror = () => setError("Could not connect to the FLYBOX simulation.");
-      socket.onclose = () => {
-        if (!stopped) reconnectTimer = window.setTimeout(connect, 1500);
-      };
-    };
-
-    connect();
-    return () => {
-      stopped = true;
-      if (reconnectTimer !== null) window.clearTimeout(reconnectTimer);
-      socket?.close();
-    };
+    return connectFrames(
+      (data) => {
+        setFrame(data);
+        setError(null);
+      },
+      (message) => setError(message),
+    );
   }, [entered]);
 
   useEffect(() => {
@@ -235,6 +215,19 @@ export default function App() {
     await safe(() => post("/api/console", { command }));
     setConsoleText("");
   }
+
+  async function downloadExport() {
+    const data = await safe(() => get("/api/experiments/export"));
+    if (!data) return;
+    const blob = new Blob([JSON.stringify(data, null, 2)], { type: "application/json" });
+    const url = URL.createObjectURL(blob);
+    const anchor = document.createElement("a");
+    anchor.href = url;
+    anchor.download = `flybox-${Date.now()}.json`;
+    anchor.click();
+    URL.revokeObjectURL(url);
+  }
+
 
   if (!entered) {
     return (
@@ -546,7 +539,7 @@ export default function App() {
           <button onClick={() => safe(() => post("/api/time/checkpoint"))}>SAVE MOMENT</button>
           <button disabled={(frame?.checkpoints.length ?? 0) === 0} onClick={() => safe(() => post("/api/time/rewind"))}>↶ REWIND</button>
           <button onClick={() => setConsoleOpen(!consoleOpen)}>&gt;_ CONSOLE</button>
-          <a href={apiUrl("/api/experiments/export")} target="_blank">EXPORT JSON</a>
+          <button onClick={downloadExport}>EXPORT JSON</button>
         </div>
         {(frame?.checkpoints.length ?? 0) > 0 && (
           <div className="checkpoint-strip">
