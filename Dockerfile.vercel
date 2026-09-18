@@ -1,0 +1,34 @@
+FROM node:22-slim AS frontend-build
+
+WORKDIR /src/frontend
+COPY frontend/package.json ./
+RUN npm install
+COPY frontend/ ./
+RUN npm run build
+
+
+FROM python:3.12-slim AS runtime
+
+ENV PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1 \
+    FLY_DEVICE=cpu \
+    FLY_DATA=/app/fly-data \
+    FLYLAB_STATIC_DIR=/app/frontend/dist \
+    FLYLAB_MAX_FLIES=2
+
+WORKDIR /app
+
+COPY backend/requirements.txt /tmp/requirements.txt
+RUN python -m pip install --no-cache-dir --upgrade pip \
+    && python -m pip install --no-cache-dir -r /tmp/requirements.txt
+
+# Bundle the validated FlyBrain connectome into the deployment image so a
+# production cold start never has to download ~260 MB before PRIME can start.
+RUN python -c "from flybrain.data import ensure_data; ensure_data('/app/fly-data')"
+
+COPY backend/ ./backend/
+COPY --from=frontend-build /src/frontend/dist ./frontend/dist
+
+EXPOSE 8080
+
+CMD ["sh", "-c", "python -m uvicorn backend.app.main:app --host 0.0.0.0 --port ${PORT:-8080}"]
