@@ -370,36 +370,113 @@ class FlyAgent:
     def _play_assists(self, snapshot: dict, t: float, escape: float) -> tuple[float, float, dict]:
         """Transparent game-only locomotion aids; disabled entirely in LAB."""
         if self.controller != "play":
-            return 0.0, 0.0, {"forage": 0.0, "avoid": 0.0, "search": 0.0}
+            return 0.0, 0.0, {
+                "forage": 0.0,
+                "avoid": 0.0,
+                "target": 0.0,
+                "orient": 0.0,
+                "search": 0.0,
+            }
 
         hunger = self.hunger
         food_items = snapshot["food"]
         odor = max((item["drive"] for item in food_items), default=0.0)
+
         forage_turn = 0.0
         if food_items and hunger > 0.15:
             strongest = max(food_items, key=lambda item: item["drive"])
-            forage_turn = float(np.clip(strongest["bearing"] * strongest["drive"] * hunger * 2.2, -1.1, 1.1))
+            forage_turn = float(np.clip(
+                strongest["bearing"] * strongest["drive"] * hunger * 2.6,
+                -1.25,
+                1.25,
+            ))
 
         predators = [item for item in snapshot["visual"] if item["object"].kind == "predator"]
         avoid_turn = 0.0
         if predators:
             nearest = min(predators, key=lambda item: item["distance"])
-            proximity = float(np.clip((0.45 - nearest["distance"]) / 0.45, 0, 1))
-            avoid_turn = float(np.clip(-nearest["bearing"] * proximity * 2.8, -1.8, 1.8))
+            proximity = float(np.clip((0.48 - nearest["distance"]) / 0.48, 0, 1))
+            avoid_turn = float(np.clip(
+                -nearest["bearing"] * proximity * 3.4,
+                -2.0,
+                2.0,
+            ))
 
-        # Deterministic search wobble gives the embodied agent something to do when
-        # the simplified connectome has no walking command. This is a GAME MECHANIC.
-        search = math.sin(t * 0.71 + (self.seed % 31) * 0.17) * (0.22 + 0.25 * hunger)
+        # TARGET and GOAL are intentionally obvious in PLAY. The neural encoder
+        # still receives the LC10a-targeted stimulus independently; this steering
+        # term is exposed as a GAME ASSIST and vanishes in PURE LAB.
+        targets = [
+            item for item in snapshot["visual"]
+            if item["object"].kind in {"stimulus", "goal"}
+        ]
+        target_turn = 0.0
+        target_drive = 0.0
+        target_distance = 1.0
+        if targets:
+            strongest_target = max(
+                targets,
+                key=lambda item: item["drive"] / max(0.06, item["distance"]),
+            )
+            target_drive = float(strongest_target["drive"])
+            target_distance = float(strongest_target["distance"])
+            target_turn = float(np.clip(
+                strongest_target["bearing"] * (0.8 + target_drive * 3.0),
+                -1.65,
+                1.65,
+            ))
+
+        # Sound and light get a weaker "curiosity/orient" behavior in PLAY so
+        # they visibly matter without overpowering food, targets, or danger.
+        orient_candidates = [
+            item for item in snapshot["visual"]
+            if item["object"].kind == "light"
+        ] + list(snapshot["sound"])
+        orient_turn = 0.0
+        orient_drive = 0.0
+        if orient_candidates:
+            strongest_orient = max(orient_candidates, key=lambda item: item["drive"])
+            orient_drive = float(strongest_orient["drive"])
+            orient_turn = float(np.clip(
+                strongest_orient["bearing"] * orient_drive * 0.9,
+                -0.65,
+                0.65,
+            ))
+
+        # Deterministic search wobble keeps an embodied agent exploring when no
+        # salient cue is present. Suppress it around meaningful cues so the fly
+        # visibly commits instead of continuing almost straight past them.
+        search = math.sin(t * 0.71 + (self.seed % 31) * 0.17) * (0.30 + 0.30 * hunger)
+        cue_strength = max(
+            odor,
+            target_drive,
+            orient_drive * 0.6,
+            max((1.0 - min(1.0, item["distance"] / 0.48) for item in predators), default=0.0),
+        )
+        search *= max(0.08, 1.0 - cue_strength * 1.35)
         if odor > self.previous_odor:
-            search *= 0.25
+            search *= 0.35
         self.previous_odor = odor
 
-        throttle = 0.018 + hunger * 0.035
+        throttle = 0.024 + hunger * 0.042
+        if target_drive > 0:
+            throttle += 0.035 * target_drive
+            if target_distance < 0.055:
+                throttle *= 0.35
         if escape > 0.2:
             throttle += 0.08 * escape
-        return forage_turn + avoid_turn + search, throttle, {
+
+        # Danger gets priority; otherwise target/goal, foraging, orientation and
+        # exploration combine smoothly.
+        if abs(avoid_turn) > 0.15:
+            total_turn = avoid_turn + search * 0.12
+        else:
+            total_turn = target_turn + forage_turn + orient_turn + search
+
+        return total_turn, throttle, {
             "forage": forage_turn,
             "avoid": avoid_turn,
+            "target": target_turn,
+            "orient": orient_turn,
             "search": search,
         }
 
@@ -450,6 +527,13 @@ class FlyAgent:
         if self.body_type != "synth":
             nx += world.wind_x * self.dt
             ny += world.wind_y * self.dt
+        nx, ny, bounced_heading, bounced = world.bounce_bounds(nx, ny, self.heading)
+        if bounced:
+            # A tiny deterministic deflection avoids endless perfectly repeating
+            # ping-pong paths while remaining reproducible.
+            jitter = ((self.seed % 17) - 8) * 0.003
+            self.heading = (bounced_heading + jitter) % (2 * math.pi)
+
         self.x, self.y, self.touch_side = world.collide_and_clamp(
             nx, ny, old_x, old_y, self.heading
         )
@@ -464,10 +548,20 @@ class FlyAgent:
             self.state = "FEEDING"
         elif escape > 0.35:
             self.state = "ESCAPING"
+        elif bounced:
+            self.state = "BOUNCING"
+        elif abs(assists.get("avoid", 0.0)) > 0.12:
+            self.state = "EVADING"
+        elif abs(assists.get("target", 0.0)) > 0.08:
+            self.state = "SEEKING TARGET"
+        elif abs(assists.get("forage", 0.0)) > 0.06:
+            self.state = "FORAGING"
+        elif abs(assists.get("orient", 0.0)) > 0.05:
+            self.state = "ORIENTING"
         elif self.velocity < -0.015:
             self.state = "REVERSING"
         elif abs(self.velocity) > 0.02:
-            self.state = "MOVING"
+            self.state = "EXPLORING"
         elif t > self.manual_until:
             self.state = "IDLE"
 
