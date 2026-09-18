@@ -368,11 +368,13 @@ class FlyAgent:
         return True
 
     def _play_assists(self, snapshot: dict, t: float, escape: float) -> tuple[float, float, dict]:
-        """Transparent game-only locomotion aids; disabled entirely in LAB."""
+        """Transparent game-only reflex/locomotion layer; disabled entirely in LAB."""
         if self.controller != "play":
             return 0.0, 0.0, {
                 "forage": 0.0,
                 "avoid": 0.0,
+                "obstacle": 0.0,
+                "edge": 0.0,
                 "target": 0.0,
                 "orient": 0.0,
                 "search": 0.0,
@@ -391,20 +393,70 @@ class FlyAgent:
                 1.25,
             ))
 
-        predators = [item for item in snapshot["visual"] if item["object"].kind == "predator"]
+        # Predator + looming objects are threat-like in PLAY and get priority.
+        threats = [
+            item for item in snapshot["visual"]
+            if item["object"].kind in {"predator", "loom"}
+        ]
         avoid_turn = 0.0
-        if predators:
-            nearest = min(predators, key=lambda item: item["distance"])
-            proximity = float(np.clip((0.48 - nearest["distance"]) / 0.48, 0, 1))
+        threat_strength = 0.0
+        if threats:
+            nearest = min(threats, key=lambda item: item["distance"])
+            threat_strength = float(np.clip((0.52 - nearest["distance"]) / 0.52, 0, 1))
+            bearing = float(nearest["bearing"])
+            if abs(bearing) < 0.08:
+                bearing = 0.08 if ((self.seed + int(t * 10)) % 2 == 0) else -0.08
             avoid_turn = float(np.clip(
-                -nearest["bearing"] * proximity * 3.4,
-                -2.0,
-                2.0,
+                -bearing * threat_strength * 3.8,
+                -2.25,
+                2.25,
             ))
 
-        # TARGET and GOAL are intentionally obvious in PLAY. The neural encoder
-        # still receives the LC10a-targeted stimulus independently; this steering
-        # term is exposed as a GAME ASSIST and vanishes in PURE LAB.
+        # Solid obstacles are detected before collision. Only obstacles roughly
+        # in front of the current heading trigger a reflex, so walls behind the
+        # agent do not keep steering it.
+        obstacle_turn = 0.0
+        obstacle_strength = 0.0
+        obstacles = snapshot.get("obstacles", [])
+        ahead = [
+            item for item in obstacles
+            if abs(float(item["bearing"])) < 1.45 and float(item["clearance"]) < 0.24
+        ]
+        if ahead:
+            nearest_wall = min(ahead, key=lambda item: item["clearance"])
+            clearance = float(nearest_wall["clearance"])
+            bearing = float(nearest_wall["bearing"])
+            obstacle_strength = float(np.clip((0.24 - clearance) / 0.24, 0, 1))
+            if abs(bearing) < 0.10:
+                # Pick one reproducible escape side when the obstacle is dead ahead.
+                bearing = 0.10 if ((self.seed // 3 + int(t * 5)) % 2 == 0) else -0.10
+            obstacle_turn = float(np.clip(
+                -bearing * (1.15 + obstacle_strength * 3.2),
+                -2.6,
+                2.6,
+            ))
+
+        # The arena boundary is treated like a wall before contact. Aim toward
+        # the center only when the current heading is carrying the body outward.
+        edge_turn = 0.0
+        edge_strength = 0.0
+        vx = math.cos(self.heading)
+        vy = math.sin(self.heading)
+        edge_distances = [
+            (self.x, vx < 0),
+            (1.0 - self.x, vx > 0),
+            (self.y, vy < 0),
+            (1.0 - self.y, vy > 0),
+        ]
+        outward_distances = [distance for distance, outward in edge_distances if outward]
+        if outward_distances:
+            nearest_edge = min(outward_distances)
+            edge_strength = float(np.clip((0.12 - nearest_edge) / 0.12, 0, 1))
+            if edge_strength > 0:
+                desired = math.atan2(0.5 - self.y, 0.5 - self.x)
+                delta = (desired - self.heading + math.pi) % (2 * math.pi) - math.pi
+                edge_turn = float(np.clip(delta * (0.9 + 2.4 * edge_strength), -2.7, 2.7))
+
         targets = [
             item for item in snapshot["visual"]
             if item["object"].kind in {"stimulus", "goal"}
@@ -425,8 +477,8 @@ class FlyAgent:
                 1.65,
             ))
 
-        # Sound and light get a weaker "curiosity/orient" behavior in PLAY so
-        # they visibly matter without overpowering food, targets, or danger.
+        # Weak phototaxis/orientation toy. This is deliberately weaker than
+        # threat and wall reflexes and remains labeled as PLAY assistance.
         orient_candidates = [
             item for item in snapshot["visual"]
             if item["object"].kind == "light"
@@ -442,39 +494,55 @@ class FlyAgent:
                 0.65,
             ))
 
-        # Deterministic search wobble keeps an embodied agent exploring when no
-        # salient cue is present. Suppress it around meaningful cues so the fly
-        # visibly commits instead of continuing almost straight past them.
         search = math.sin(t * 0.71 + (self.seed % 31) * 0.17) * (0.30 + 0.30 * hunger)
         cue_strength = max(
             odor,
             target_drive,
             orient_drive * 0.6,
-            max((1.0 - min(1.0, item["distance"] / 0.48) for item in predators), default=0.0),
+            threat_strength,
+            obstacle_strength,
+            edge_strength,
         )
-        search *= max(0.08, 1.0 - cue_strength * 1.35)
+        search *= max(0.05, 1.0 - cue_strength * 1.45)
         if odor > self.previous_odor:
             search *= 0.35
         self.previous_odor = odor
+
+        # Physical touch is a last-resort tactile reflex after a collision.
+        touch_turn = 0.0
+        if self.touch_side == "L":
+            touch_turn = 2.5
+        elif self.touch_side == "R":
+            touch_turn = -2.5
 
         throttle = 0.024 + hunger * 0.042
         if target_drive > 0:
             throttle += 0.035 * target_drive
             if target_distance < 0.055:
                 throttle *= 0.35
+        if obstacle_strength > 0.55 or edge_strength > 0.55:
+            throttle *= 0.65
         if escape > 0.2:
             throttle += 0.08 * escape
 
-        # Danger gets priority; otherwise target/goal, foraging, orientation and
-        # exploration combine smoothly.
-        if abs(avoid_turn) > 0.15:
-            total_turn = avoid_turn + search * 0.12
+        # Reflex priority:
+        # tactile > predator/loom > physical obstacle > arena edge > approach/orient/search
+        if abs(touch_turn) > 0:
+            total_turn = touch_turn
+        elif abs(avoid_turn) > 0.15:
+            total_turn = avoid_turn + search * 0.08
+        elif abs(obstacle_turn) > 0.10:
+            total_turn = obstacle_turn + search * 0.05
+        elif abs(edge_turn) > 0.10:
+            total_turn = edge_turn + search * 0.05
         else:
             total_turn = target_turn + forage_turn + orient_turn + search
 
         return total_turn, throttle, {
             "forage": forage_turn,
             "avoid": avoid_turn,
+            "obstacle": obstacle_turn + touch_turn,
+            "edge": edge_turn,
             "target": target_turn,
             "orient": orient_turn,
             "search": search,
@@ -486,13 +554,13 @@ class FlyAgent:
 
         snapshot = world.sensory_snapshot(self.x, self.y, self.heading, t)
         hunger_gain = 0.45 + 1.35 * self.hunger
+        contact_side = self.touch_side
         inject, eye_drive, senses = self.encoder.encode(
             snapshot,
             self.sensory_gain,
             hunger_gain,
-            self.touch_side,
+            contact_side,
         )
-        self.touch_side = None
         inject.extend(self.interventions.injections())
 
         fired = np.asarray(self.brain.step(eye_drive=eye_drive, inject=inject), dtype=np.int64)
@@ -501,7 +569,9 @@ class FlyAgent:
         motor = self.motor.observe(fired, self.dt)
         turn, speed, escape = self.motor.motion(motor, self.controller)
 
+        self.touch_side = contact_side
         assist_turn, assist_speed, assists = self._play_assists(snapshot, t, escape)
+        self.touch_side = None
         turn += assist_turn
         speed += assist_speed
 
@@ -552,6 +622,10 @@ class FlyAgent:
             self.state = "BOUNCING"
         elif abs(assists.get("avoid", 0.0)) > 0.12:
             self.state = "EVADING"
+        elif abs(assists.get("obstacle", 0.0)) > 0.10:
+            self.state = "AVOIDING WALL"
+        elif abs(assists.get("edge", 0.0)) > 0.10:
+            self.state = "TURNING INWARD"
         elif abs(assists.get("target", 0.0)) > 0.08:
             self.state = "SEEKING TARGET"
         elif abs(assists.get("forage", 0.0)) > 0.06:
