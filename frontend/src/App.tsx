@@ -168,6 +168,10 @@ export default function App() {
     post(`/api/world/${id}/move?x=${x}&y=${y}`).catch(() => {});
   }
 
+  function removeObject(id: string) {
+    del(`/api/world/${id}`).catch((e) => setError(e instanceof Error ? e.message : String(e)));
+  }
+
   async function intervention(type: string, target = selectedPopulation) {
     await safe(() => post(`/api/flies/${selectedFly}/interventions`, {
       type, target, amount: 0.8, fraction: 0.1, seed: 64,
@@ -288,6 +292,7 @@ export default function App() {
             onPlace={place}
             onMoveObject={moveObject}
             onMoveFly={moveFly}
+            onRemoveObject={removeObject}
             onSelectFly={setSelectedFly}
           />
 
@@ -351,9 +356,11 @@ export default function App() {
               {fly?.controller === "play" && (
                 <section className="control-section assist-panel">
                   <div className="section-label">GAME ASSIST · NOT BIOLOGY</div>
-                  <Signal label="FORAGE STEER" value={Math.abs(fly?.assists?.forage ?? 0)} max={1.1} />
-                  <Signal label="PREDATOR AVOID" value={Math.abs(fly?.assists?.avoid ?? 0)} max={1.8} />
-                  <Signal label="SEARCH WOBBLE" value={Math.abs(fly?.assists?.search ?? 0)} max={0.5} />
+                  <Signal label="FORAGE STEER" value={Math.abs(fly?.assists?.forage ?? 0)} max={1.25} />
+                  <Signal label="TARGET / GOAL" value={Math.abs(fly?.assists?.target ?? 0)} max={1.65} />
+                  <Signal label="SOUND / LIGHT ORIENT" value={Math.abs(fly?.assists?.orient ?? 0)} max={0.65} />
+                  <Signal label="PREDATOR AVOID" value={Math.abs(fly?.assists?.avoid ?? 0)} max={2.0} />
+                  <Signal label="SEARCH WOBBLE" value={Math.abs(fly?.assists?.search ?? 0)} max={0.6} />
                   <p className="microcopy">These body commands make PLAY fun. Switch to PURE LAB to remove all three.</p>
                 </section>
               )}
@@ -466,11 +473,11 @@ export default function App() {
             <>
               <section className="control-section no-top">
                 <div className="section-label">BUILD A TINY WORLD</div>
-                <h3>Pick a tool. Click the arena. Drag objects with HAND.</h3>
+                <h3>Pick a tool. Click the arena. Drag with HAND. Right-click an element to delete it.</h3>
                 <div className="build-guide">
                   <p>🍌 <b>Fruit</b> emits an experimental ORN_DM1/DM2 odor field and can be eaten.</p>
                   <p>〰 <b>Odor Paint</b> lets you draw non-edible ORN_DM1/DM2 smell trails directly onto the arena.</p>
-                  <p>🖐 <b>Hand</b> can grab agents or drag world objects while the simulation is live.</p>
+                  <p>🖐 <b>Hand</b> can grab agents or drag world objects while the simulation is live. Right-click any placed element to remove it.</p>
                   <p>⚫ <b>Loom</b> uses angular growth → LPLC2; close threats also drive LC4.</p>
                   <p>🔊 <b>Sound</b> pulses JO-A/JO-B auditory populations.</p>
                   <p>💡 <b>Light</b> projects onto FlyBrain photoreceptor azimuths.</p>
@@ -609,6 +616,12 @@ function WhyCard({ fly }: any) {
   } else if (fly.state === "POSSESSED") {
     title = "You are driving the body.";
     detail = "WASD adds an explicit manual body command while the connectome keeps receiving sensory input.";
+  } else if (Math.abs(fly.assists?.target ?? 0) > 0.08) {
+    title = "It is steering toward the target.";
+    detail = "TARGET/GOAL steering is an explicit PLAY assist. The target also drives the experimental LC10a sensory encoder; PURE LAB removes the body assist.";
+  } else if (Math.abs(fly.assists?.orient ?? 0) > 0.05) {
+    title = "It is orienting toward a sound or light.";
+    detail = "This visible orientation is a PLAY game assist; the sensory stimulus is still injected through its separately labeled neural encoder.";
   } else if ((fly.senses?.food_odor ?? 0) > 0.15) {
     title = "It can smell nearby food.";
     detail = `Food odor input is ${fly.senses.food_odor.toFixed(2)}. In PLAY, hunger makes that cue more influential on the game locomotion assist.`;
