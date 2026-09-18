@@ -2,6 +2,8 @@
 
 FLYBOX is a disposable interactive sandbox around a simplified fruit-fly connectome simulation.
 
+**Public site:** https://flyboxlab.vercel.app/
+
 The product has two goals at the same time:
 
 1. Be immediately fun for a casual user, kid, developer, or curious person.
