@@ -582,6 +582,15 @@ class SimulationEngine:
             self.challenge_winner = None
             self.challenge_actions = 0
             self.mystery_secret = None
+            for fly in self.flies.values():
+                fly.food_eaten = 0
+                fly.escape_events = 0
+                fly.alive = True
+                fly.energy = max(55.0, fly.energy)
+                fly.state = "READY"
+                self._seen_food[fly.id] = 0
+                self._seen_escape[fly.id] = 0
+                self._seen_alive[fly.id] = True
 
             if challenge_id == "race":
                 self.world.clear()
