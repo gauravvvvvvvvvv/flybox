@@ -41,6 +41,7 @@ class SimulationEngine:
         self.challenge_actions = 0
         self.mystery_secret: dict | None = None
         self.couplings: list[dict] = []
+        self.checkpoints = deque(maxlen=8)
         self.achievements: set[str] = set()
         self._seen_food: dict[str, int] = {}
         self._seen_escape: dict[str, int] = {}
@@ -204,6 +205,7 @@ class SimulationEngine:
             ],
             "couplings": list(self.couplings),
             "comparisons": self.comparisons(),
+            "checkpoints": self.checkpoint_summaries(),
         }
 
     async def reset(self):
@@ -226,6 +228,7 @@ class SimulationEngine:
             self.challenge_actions = 0
             self.mystery_secret = None
             self.couplings.clear()
+            self.checkpoints.clear()
             self._default_world()
             self._create_primary()
             self.flies["prime"].controller = controller
@@ -278,6 +281,102 @@ class SimulationEngine:
             count = len(self.couplings)
             self.couplings.clear()
             self._event(f"disconnected {count} artificial brain links", "game")
+
+    def checkpoint_summaries(self) -> list[dict]:
+        return [
+            {"id": item["id"], "label": item["label"], "t": item["t"]}
+            for item in self.checkpoints
+        ]
+
+    async def create_checkpoint(self, label: str | None = None) -> dict:
+        async with self._lock:
+            snapshots = [fly.runtime_snapshot() for fly in self.flies.values()]
+            checkpoint = {
+                "id": f"cp-{uuid.uuid4().hex[:7]}",
+                "label": (label or f"T+{self.t:.2f}s")[:40],
+                "t": self.t,
+                "seed": self.seed,
+                "world": self.world.to_dict(),
+                "flies": snapshots,
+                "challenge_id": self.challenge_id,
+                "challenge_started": self.challenge_started,
+                "challenge_completed": self.challenge_completed,
+                "challenge_winner": self.challenge_winner,
+                "challenge_actions": self.challenge_actions,
+                "mystery_secret": self.mystery_secret,
+                "achievements": set(self.achievements),
+                "couplings": [dict(item) for item in self.couplings],
+                "events": list(self.events),
+            }
+            self.checkpoints.append(checkpoint)
+            self._event(f'time checkpoint saved: {checkpoint["label"]}', "time")
+            return {"id": checkpoint["id"], "label": checkpoint["label"], "t": checkpoint["t"]}
+
+    async def rewind(self, checkpoint_id: str | None = None) -> dict:
+        async with self._lock:
+            if not self.checkpoints:
+                raise ValueError("no time checkpoints exist")
+            checkpoint = None
+            if checkpoint_id:
+                checkpoint = next((item for item in self.checkpoints if item["id"] == checkpoint_id), None)
+                if checkpoint is None:
+                    raise ValueError(f"unknown checkpoint: {checkpoint_id}")
+            else:
+                checkpoint = self.checkpoints[-1]
+
+            self.running = False
+            self.seed = int(checkpoint["seed"])
+            self.t = float(checkpoint["t"])
+            self.world = World(seed=int(checkpoint["world"].get("seed", self.seed)))
+            for item in checkpoint["world"].get("objects", []):
+                self.world.add(
+                    item["kind"],
+                    float(item["x"]),
+                    float(item["y"]),
+                    float(item.get("intensity", 0.8)),
+                    float(item.get("radius", 0.04)),
+                    float(item.get("amount", 1.0)),
+                    float(item.get("vx", 0.0)),
+                    float(item.get("vy", 0.0)),
+                    item.get("label"),
+                )
+
+            wanted = {item["id"] for item in checkpoint["flies"]}
+            for fly_id in list(self.flies):
+                if fly_id not in wanted:
+                    del self.flies[fly_id]
+
+            for item in checkpoint["flies"]:
+                fly = self.flies.get(item["id"])
+                if fly is None or fly.seed != item["seed"]:
+                    fly = FlyAgent(
+                        item["id"],
+                        item["name"],
+                        int(item["seed"]),
+                        float(item["x"]),
+                        float(item["y"]),
+                        is_prime=bool(item["is_prime"]),
+                        controller=item["controller"],
+                        body_type=item["body_type"],
+                    )
+                    self.flies[fly.id] = fly
+                fly.restore_runtime_snapshot(item)
+
+            self.challenge_id = checkpoint["challenge_id"]
+            self.challenge_started = float(checkpoint["challenge_started"])
+            self.challenge_completed = bool(checkpoint["challenge_completed"])
+            self.challenge_winner = checkpoint["challenge_winner"]
+            self.challenge_actions = int(checkpoint["challenge_actions"])
+            self.mystery_secret = checkpoint["mystery_secret"]
+            self.achievements = set(checkpoint["achievements"])
+            self.couplings = [dict(item) for item in checkpoint["couplings"]]
+            self.events = deque(checkpoint["events"], maxlen=1600)
+            self._last_frames = {}
+            self._seen_food = {fly.id: fly.food_eaten for fly in self.flies.values()}
+            self._seen_escape = {fly.id: fly.escape_events for fly in self.flies.values()}
+            self._seen_alive = {fly.id: fly.alive for fly in self.flies.values()}
+            self._event(f'rewound to {checkpoint["label"]}', "time")
+            return {"id": checkpoint["id"], "label": checkpoint["label"], "t": checkpoint["t"]}
 
     async def add_fly(
         self,
@@ -680,6 +779,7 @@ class SimulationEngine:
             self._last_frames = {}
             self.events.clear()
             self.couplings.clear()
+            self.checkpoints.clear()
             self._seen_food.clear()
             self._seen_escape.clear()
             self._seen_alive.clear()
