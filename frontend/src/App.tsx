@@ -249,7 +249,7 @@ export default function App() {
           ))}
         </nav>
         <div className="status"><span className="live-dot" /> {frame?.running ? "LIVE" : "PAUSED"}</div>
-        <div className="header-stat">{frame?.flies.length ?? 0} AGENTS · {frame?.world.objects.length ?? 0} OBJECTS</div>
+        <div className="header-stat">{frame?.flies.length ?? 0} AGENTS · {frame?.world.objects.length ?? 0} OBJECTS{(frame?.viewers ?? 0) > 1 ? ` · PARTY ${frame?.viewers}` : ""}</div>
         {frame?.mock && <div className="mock">MOCK MODE</div>}
       </header>
 
