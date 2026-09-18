@@ -78,6 +78,7 @@ export type Frame = {
   running: boolean;
   speed: number;
   mock: boolean;
+  viewers: number;
   flies: FlyFrame[];
   world: { seed: number; objects: ArenaObject[] };
   events: { t: number; kind: string; message: string }[];
