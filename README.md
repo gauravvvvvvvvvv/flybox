@@ -350,3 +350,170 @@ The container defaults to `FLYLAB_MAX_FLIES=2` on Vercel to keep memory usage co
 - FlyBrain's ~260 MB validated connectome is downloaded during the container image build and stored in the image, not downloaded on each cold start.
 - Vercel may recycle an instance. The browser automatically reconnects, but in-memory experiment state is not durable across instance replacement.
 - For durable long-running public experiments, move experiment state to external storage or use a dedicated persistent backend.
+
+
+## FLYBOX V2 — Play first, inspect deeper
+
+The project now has four surfaces over the same simulation:
+
+### PLAY
+
+Designed to be understandable without neuroscience knowledge.
+
+- Spawn and rename agents.
+- Swap bodies: fly, car, bot, drone, walker, ship or synth.
+- Grab any agent with the mouse and move it.
+- Possess the selected body with WASD while its connectome keeps receiving sensory input.
+- Add or drag fruit, targets, looming objects, predators, sound sources, lights, goals and walls.
+- Paint non-edible odor fields directly into the arena.
+- Watch plain-language `WHY?` explanations for current behavior.
+- See a separate `GAME ASSIST · NOT BIOLOGY` meter whenever PLAY's locomotion/foraging helpers are active.
+- Earn local session achievements.
+
+### CHALLENGES
+
+Included challenge presets:
+
+- Snack Attack
+- Don't Get Squished
+- You vs Fly
+- Fly Race
+- Brain Car
+- Maze Run
+- Mutation Tournament
+- Connectome Hijack
+- Mystery Brain
+- Sandbox
+
+Mutation Tournament gives rivals explicit reproducible modifications rather than merely cosmetic labels.
+
+### LAB
+
+The scientific/technical layer includes:
+
+- real FlyBrain firing counts
+- real descending-neuron traces
+- named DNg100 forward readout
+- named DNa02 left/right steering readout
+- named DNp01 escape readout
+- named MDN backward readout
+- population stimulation, silencing and seeded lesions
+- live pairwise firing-set Jaccard divergence
+- live physical/trajectory divergence
+- real MaleCNS soma-position visualization when `brain.positions` is available
+- bounded live firing overlays on the anatomical projection
+- 4-replicate native FlyBrain batch probes using one shared connectome graph
+- experiment JSON export
+
+The anatomical brain view does not invent coordinates. If position metadata is absent, the UI says the view is unavailable.
+
+### BUILD
+
+- click-to-place world editor
+- draggable world objects
+- odor paintbrush
+- random seeded worlds
+- daily deterministic world
+- daylight/night presentation
+- wind body mechanic
+- reproducible share links
+
+A share link stores the sandbox setup in a compressed `#box=...` URL fragment, so it can be passed around without requiring an account/database.
+
+### WEIRD
+
+- neural-firework overlay
+- live connectome-to-audio tone
+- arbitrary body swaps
+- Brain Car / Synth Brain
+- exact CPU/mock brain forking
+- artificial Brain → Brain coupling
+- Chaos Button
+- Cinema mode
+
+Brain-to-brain coupling is explicitly labeled an **experimental artificial coupling**. It is not presented as biological fly communication.
+
+## Time Machine
+
+On CPU/mock backends, **SAVE MOMENT** records an exact in-memory checkpoint including:
+
+- FlyBrain membrane state
+- current spike state
+- FlyBrain RNG state
+- neural traces
+- world state
+- agent state
+- intervention state
+- queued stimulation
+- challenge state
+- artificial brain couplings
+
+**REWIND** restores that checkpoint.
+
+Exact CUDA checkpoint/fork support is intentionally disabled until CuPy state cloning has been validated.
+
+## Senses
+
+Current experimental world encoders:
+
+| World input | Neural input |
+|---|---|
+| Fruit / odor paint | ORN_DM1 + ORN_DM2 |
+| Target | LC10a |
+| Looming object | LPLC2 using angular growth |
+| Close threat | LC4 |
+| Touching wall | SNta |
+| Sound source | JO-A / JO-B populations |
+| Light | FlyBrain photoreceptors using stored azimuth metadata |
+
+These are experimental encoders around the connectome. They are not a claim that the sandbox reproduces full fly sensory transduction.
+
+## PLAY versus LAB
+
+This distinction is central to FLYBOX.
+
+The simplified spiking FlyBrain model does not reliably convert ordinary sensory drive into a complete walking command. Therefore:
+
+- **LAB**: no locomotion/foraging assist. Named descending-neuron signals alone drive the engineering body decoder.
+- **PLAY**: adds visible deterministic search, food-foraging and predator-avoidance body assists so the sandbox is enjoyable.
+
+The UI always exposes the assist values separately from neural outputs.
+
+## Developer surface
+
+The live REST/WebSocket API can be used directly.
+
+Developer console examples:
+
+```text
+stim LC4 0.8
+silence LC10a
+restore LC10a
+spawn food .5 .5
+fork
+random 42
+challenge race
+```
+
+Small client SDKs are included:
+
+```text
+sdk/python/flybox.py
+sdk/js/flybox.ts
+examples/hijack.py
+```
+
+## Shared sessions
+
+All connected browsers to one running FLYBOX server see the same in-memory world and can manipulate it together. The header shows a PARTY viewer count when multiple clients are connected.
+
+This is deliberately not described as a full multiplayer-room system yet: accounts, room isolation, persistence, moderation and public community-level storage require external persistent infrastructure.
+
+## Resource honesty
+
+A real FlyBrain agent owns a full neural state over the 166,700-neuron connectome. FLYBOX therefore retains a strict full-agent limit.
+
+It does not fake a 20-agent "real connectome colony" by silently replacing extra brains with random lightweight agents.
+
+For large statistical work, use the native batched probe API instead of spawning many independent UI agents.
+
