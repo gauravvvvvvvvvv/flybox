@@ -15,14 +15,35 @@ export default function App() {
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    const ws = new WebSocket(WS);
-    ws.onmessage = (event) => {
-      const data = JSON.parse(event.data);
-      if (data.type === "frame") setFrame(data);
-      if (data.type === "error") setError(data.message + (data.error ? ` — ${data.error}` : ""));
+    let socket: WebSocket | null = null;
+    let reconnectTimer: number | null = null;
+    let stopped = false;
+
+    const connect = () => {
+      if (stopped) return;
+      socket = new WebSocket(WS);
+      socket.onopen = () => setError(null);
+      socket.onmessage = (event) => {
+        const data = JSON.parse(event.data);
+        if (data.type === "frame") setFrame(data);
+        if (data.type === "error") {
+          setError(data.message + (data.error ? ` — ${data.error}` : ""));
+        }
+      };
+      socket.onerror = () => setError("Could not connect to FLY.LAB backend.");
+      socket.onclose = () => {
+        if (!stopped) {
+          reconnectTimer = window.setTimeout(connect, 1500);
+        }
+      };
     };
-    ws.onerror = () => setError("Could not connect to FLY.LAB backend.");
-    return () => ws.close();
+
+    connect();
+    return () => {
+      stopped = true;
+      if (reconnectTimer !== null) window.clearTimeout(reconnectTimer);
+      socket?.close();
+    };
   }, []);
 
   useEffect(() => {
