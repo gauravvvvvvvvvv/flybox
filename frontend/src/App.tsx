@@ -38,6 +38,7 @@ export default function App() {
   const [consoleOpen, setConsoleOpen] = useState(false);
   const [consoleText, setConsoleText] = useState("");
   const [audioOn, setAudioOn] = useState(false);
+  const [cinematic, setCinematic] = useState(false);
   const keys = useRef(new Set<string>());
   const lastMove = useRef(0);
   const audio = useRef<{ ctx: AudioContext; osc: OscillatorNode; gain: GainNode } | null>(null);
@@ -240,7 +241,7 @@ export default function App() {
   }
 
   return (
-    <div className="app">
+    <div className={cinematic ? "app cinematic" : "app"}>
       <header>
         <div className="brand">FLYBOX</div>
         <nav className="surface-tabs">
@@ -257,6 +258,7 @@ export default function App() {
 
       <section className="workspace">
         <div className="arena-pane">
+          {cinematic && <button className="cinema-exit" onClick={() => setCinematic(false)}>EXIT CINEMA</button>}
           <div className="toolbar">
             {tools.map(({ kind, label }) => (
               <button key={kind} className={tool === kind ? "active" : ""} onClick={() => setTool(kind)}>
@@ -457,6 +459,7 @@ export default function App() {
                 <button className="wide" onClick={() => setNeuralOverlay(!neuralOverlay)}>
                   {neuralOverlay ? "HIDE" : "SHOW"} NEURAL FIREWORKS
                 </button>
+                <button className="wide" onClick={() => setCinematic(true)}>CINEMA MODE</button>
                 <button className="wide" onClick={toggleAudio}>
                   {audioOn ? "STOP BRAIN TONE" : "LISTEN TO BRAIN TONE"}
                 </button>
