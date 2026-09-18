@@ -1,10 +1,17 @@
 export class Flybox {
-  constructor(public baseUrl = "http://localhost:8000") {}
+  readonly sessionId: string;
+
+  constructor(public baseUrl = "http://localhost:8000") {
+    this.sessionId = crypto.randomUUID();
+  }
 
   private async request(path: string, method = "GET", body?: unknown) {
     const response = await fetch(this.baseUrl.replace(/\/$/, "") + path, {
       method,
-      headers: body ? { "Content-Type": "application/json" } : undefined,
+      headers: {
+        "X-Flybox-Session": this.sessionId,
+        ...(body ? { "Content-Type": "application/json" } : {}),
+      },
       body: body ? JSON.stringify(body) : undefined,
     });
     if (!response.ok) throw new Error(await response.text());
@@ -47,5 +54,9 @@ export class Flybox {
 
   console(command: string) {
     return this.request("/api/console", "POST", { command });
+  }
+
+  close() {
+    return this.request("/api/session/close", "POST");
   }
 }
