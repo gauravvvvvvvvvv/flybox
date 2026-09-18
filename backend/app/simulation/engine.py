@@ -624,6 +624,16 @@ class SimulationEngine:
                     fly_id = f"fly-{uuid.uuid4().hex[:5]}"
                     body = ["fly", "bot", "car"][index % 3]
                     fly = FlyAgent(fly_id, f"RIVAL {index}", self.seed + index * 13, .12, .35 + index * .15, controller="play", body_type=body)
+                    if index == 1:
+                        fly.name = "LC4-OFF"
+                        fly.interventions.apply({"type": "silence_population", "target": "LC4"}, self.t)
+                    elif index == 2:
+                        fly.name = "LESION-5%"
+                        fly.interventions.apply({
+                            "type": "random_synapse_lesion",
+                            "fraction": 0.05,
+                            "seed": self.seed + 505,
+                        }, self.t)
                     self.flies[fly_id] = fly
                     self._seen_food[fly_id] = 0
                     self._seen_escape[fly_id] = 0
@@ -843,7 +853,7 @@ class SimulationEngine:
                 position = row.get("position", [0.5, 0.5])
                 fly = FlyAgent(
                     fly_id,
-                    "PRIME" if is_prime else str(row.get("name", f"FLY {index + 1}")),
+                    str(row.get("name", "PRIME" if is_prime else f"FLY {index + 1}")),
                     int(row.get("seed", self.seed + index)),
                     float(position[0]),
                     float(position[1]),
