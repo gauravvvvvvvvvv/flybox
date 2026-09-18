@@ -129,3 +129,21 @@ def test_share_code_round_trip_and_brain_coupling():
         assert target.world.to_dict()["objects"] == source.world.to_dict()["objects"]
 
     asyncio.run(run())
+
+
+def test_exact_mock_checkpoint_rewind():
+    async def run():
+        sim = SimulationEngine(seed=21)
+        await sim.step_once()
+        cp = await sim.create_checkpoint("before")
+        before = (sim.t, sim.flies["prime"].x, sim.flies["prime"].y, sim.flies["prime"].previous_fired.copy())
+        for _ in range(4):
+            await sim.step_once()
+        assert sim.t > before[0]
+        await sim.rewind(cp["id"])
+        assert sim.t == before[0]
+        assert sim.flies["prime"].x == before[1]
+        assert sim.flies["prime"].y == before[2]
+        assert np.array_equal(sim.flies["prime"].previous_fired, before[3])
+
+    asyncio.run(run())
