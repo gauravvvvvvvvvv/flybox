@@ -69,6 +69,11 @@ export type FlyFrame = {
   assists: Record<string, number>;
   trail: { t: number; x: number; y: number }[];
   sampled_fired: number[];
+  brain_view: {
+    kind: string;
+    mapped: number;
+    firing_positions: [number, number, number][];
+  };
   interventions: Array<Record<string, unknown>>;
 };
 
