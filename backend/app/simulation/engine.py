@@ -606,6 +606,20 @@ class SimulationEngine:
                     self._seen_alive[fly_id] = True
             elif challenge_id == "survive":
                 self.world.add("predator", .85, .5, intensity=1.0, radius=.05, vx=-.055, vy=.035, label="PREDATOR")
+            elif challenge_id == "hunt":
+                self.world.clear()
+                self.world.add("food", .18, .18, intensity=1.0, radius=.025, amount=1.0)
+                self.world.add("food", .82, .82, intensity=1.0, radius=.025, amount=1.0)
+                self.world.add("predator", .78, .50, intensity=1.0, radius=.055, label="YOU")
+                for fly in self.flies.values():
+                    fly.x, fly.y = .35, .50
+            elif challenge_id == "braincar":
+                self.world.clear()
+                self.world.add("goal", .90, .50, intensity=1.0, radius=.05, label="FINISH")
+                self.world.add("obstacle", .50, .35, radius=.07)
+                self.world.add("obstacle", .50, .65, radius=.07)
+                self.flies["prime"].set_body("car")
+                self.flies["prime"].x, self.flies["prime"].y, self.flies["prime"].heading = .10, .50, 0.0
             elif challenge_id == "mystery":
                 if len(self.flies) < 2:
                     fly_id = f"fly-{uuid.uuid4().hex[:5]}"
