@@ -10,6 +10,7 @@ type Props = {
   neuralOverlay: boolean;
   onPlace: (kind: WorldKind, x: number, y: number) => void;
   onMoveObject: (id: string, x: number, y: number) => void;
+  onMoveFly: (id: string, x: number, y: number) => void;
   onSelectFly: (id: string) => void;
 };
 
@@ -20,10 +21,13 @@ export default function Arena({
   neuralOverlay,
   onPlace,
   onMoveObject,
+  onMoveFly,
   onSelectFly,
 }: Props) {
   const ref = useRef<HTMLCanvasElement>(null);
   const dragObject = useRef<string | null>(null);
+  const dragFly = useRef<string | null>(null);
+  const lastPaint = useRef(0);
 
   useEffect(() => {
     const canvas = ref.current;
@@ -141,6 +145,8 @@ export default function Arena({
     }
     if (flyHit && flyHit.d < 0.05) {
       onSelectFly(flyHit.id);
+      dragFly.current = flyHit.id;
+      ev.currentTarget.setPointerCapture(ev.pointerId);
       return;
     }
 
@@ -156,14 +162,28 @@ export default function Arena({
   }
 
   function onPointerMove(ev: React.PointerEvent<HTMLCanvasElement>) {
-    if (!dragObject.current) return;
     const p = point(ev);
-    onMoveObject(dragObject.current, p.x, p.y);
+    if (dragFly.current) {
+      onMoveFly(dragFly.current, p.x, p.y);
+      return;
+    }
+    if (dragObject.current) {
+      onMoveObject(dragObject.current, p.x, p.y);
+      return;
+    }
+    if (tool === "odor" && (ev.buttons & 1) === 1) {
+      const now = performance.now();
+      if (now - lastPaint.current > 90) {
+        lastPaint.current = now;
+        onPlace("odor", p.x, p.y);
+      }
+    }
   }
 
   function onPointerUp(ev: React.PointerEvent<HTMLCanvasElement>) {
-    if (dragObject.current) {
+    if (dragObject.current || dragFly.current) {
       dragObject.current = null;
+      dragFly.current = null;
       if (ev.currentTarget.hasPointerCapture(ev.pointerId)) {
         ev.currentTarget.releasePointerCapture(ev.pointerId);
       }
@@ -187,11 +207,11 @@ function drawObject(ctx: CanvasRenderingContext2D, obj: Frame["world"]["objects"
   const y = obj.y * h;
   const r = Math.max(5, obj.radius * Math.min(w, h));
 
-  if (obj.kind === "food") {
+  if (obj.kind === "food" || obj.kind === "odor") {
     for (let ring = 4; ring >= 1; ring--) {
       ctx.beginPath();
       ctx.arc(x, y, r + ring * 22, 0, Math.PI * 2);
-      ctx.strokeStyle = `rgba(231,221,119,${0.018 * (5 - ring)})`;
+      ctx.strokeStyle = obj.kind === "odor" ? `rgba(146,255,156,${0.024 * (5 - ring)})` : `rgba(231,221,119,${0.018 * (5 - ring)})`;
       ctx.stroke();
     }
   }
