@@ -438,6 +438,12 @@ export default function App() {
               <section className="control-section">
                 <button className="wide" onClick={() => safe(() => post("/api/world/randomize"))}>🎲 RANDOM WORLD</button>
                 <button className="wide" onClick={() => safe(() => post("/api/world/daily"))}>☀ DAILY SEEDED WORLD</button>
+                <div className="environment-grid">
+                  <button onClick={() => safe(() => post("/api/world/environment", { daylight: 1, wind_x: 0, wind_y: 0 }))}>☀ DAY</button>
+                  <button onClick={() => safe(() => post("/api/world/environment", { daylight: 0.08, wind_x: 0, wind_y: 0 }))}>☾ NIGHT</button>
+                  <button onClick={() => safe(() => post("/api/world/environment", { daylight: frame?.world.daylight ?? 1, wind_x: -0.08, wind_y: 0 }))}>← WIND</button>
+                  <button onClick={() => safe(() => post("/api/world/environment", { daylight: frame?.world.daylight ?? 1, wind_x: 0.08, wind_y: 0 }))}>WIND →</button>
+                </div>
                 <button className="wide" onClick={shareBox}>COPY SHARE LINK</button>
                 <div className="seed">SEED {frame?.world.seed ?? "—"}</div>
               </section>
