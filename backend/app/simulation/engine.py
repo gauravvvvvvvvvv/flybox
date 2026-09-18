@@ -220,6 +220,69 @@ class SimulationEngine:
             "events": list(self.events),
         }
 
+    async def import_experiment(self, payload: dict):
+        if payload.get("format") != "flybox-experiment-v1":
+            raise ValueError("unsupported experiment format")
+        async with self._lock:
+            self.running = False
+            self.seed = int(payload.get("seed", 64))
+            self.t = 0.0
+            self.world = World(seed=self.seed)
+            for item in payload.get("world", {}).get("objects", []):
+                self.world.add(
+                    item["kind"],
+                    float(item["x"]),
+                    float(item["y"]),
+                    float(item.get("intensity", 0.8)),
+                    float(item.get("radius", 0.04)),
+                )
+            self.flies = {}
+            self._last_frames = {}
+            self.events.clear()
+
+            fly_rows = payload.get("flies") or []
+            prime_row = next((row for row in fly_rows if row.get("is_prime")), None)
+            if prime_row is None:
+                prime_row = {
+                    "id": "prime",
+                    "name": "PRIME",
+                    "seed": self.seed,
+                    "position": [0.5, 0.5],
+                    "heading": 0.0,
+                    "sensory_gain": 1.0,
+                    "interventions": [],
+                }
+
+            ordered = [prime_row] + [row for row in fly_rows if row is not prime_row]
+            for index, row in enumerate(ordered[: self.max_flies]):
+                is_prime = index == 0
+                fly_id = "prime" if is_prime else str(row.get("id") or f"fly-import-{index}")
+                position = row.get("position", [0.5, 0.5])
+                fly = FlyAgent(
+                    fly_id,
+                    "PRIME" if is_prime else str(row.get("name", f"FLY {index + 1}")),
+                    int(row.get("seed", self.seed + index)),
+                    float(position[0]),
+                    float(position[1]),
+                    is_prime=is_prime,
+                )
+                fly.heading = float(row.get("heading", 0.0))
+                fly.sensory_gain = float(row.get("sensory_gain", 1.0))
+                for intervention in row.get("interventions", []):
+                    # Configuration import reapplies reproducible active modifications
+                    # at t=0. It does not claim to restore historical membrane voltages.
+                    if intervention.get("type") in {
+                        "silence_population",
+                        "random_synapse_lesion",
+                    } and intervention.get("active", True):
+                        fly.interventions.apply(intervention, 0.0)
+                self.flies[fly.id] = fly
+
+            self._event(
+                "experiment configuration imported; neural state restarted from seed",
+                "system",
+            )
+
     async def run_loop(self):
         while True:
             if not self.running:
