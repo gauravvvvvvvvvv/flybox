@@ -408,20 +408,6 @@ async def rewind(checkpoint_id: str | None = None):
         raise HTTPException(400, str(exc)) from exc
 
 
-@app.get("/api/share")
-async def share_box():
-    return {"code": get_engine().share_code()}
-
-
-@app.post("/api/share/import")
-async def import_share_box(payload: ShareCodeIn):
-    try:
-        await get_engine().import_share_code(payload.code)
-        return get_engine().frame_payload()
-    except ValueError as exc:
-        raise HTTPException(400, str(exc)) from exc
-
-
 @app.get("/api/experiments/export")
 async def export_experiment():
     return get_engine().export_experiment()
