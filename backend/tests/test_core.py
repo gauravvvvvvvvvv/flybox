@@ -164,3 +164,25 @@ def test_exact_mock_checkpoint_rewind():
         assert np.array_equal(sim.flies["prime"].previous_fired, before[3])
 
     asyncio.run(run())
+
+
+def test_play_obstacle_avoidance_turns_before_collision():
+    fly = FlyAgent("test-wall", "TEST WALL", 9, 0.4, 0.5, controller="play")
+    fly.heading = 0.0
+    world = World(seed=1)
+    world.add("obstacle", 0.55, 0.52, radius=0.05)
+    snapshot = world.sensory_snapshot(fly.x, fly.y, fly.heading, 0.0)
+    turn, throttle, assists = fly._play_assists(snapshot, 0.0, 0.0)
+    assert abs(assists["obstacle"]) > 0.10
+    assert abs(turn) > 0.10
+    assert throttle > 0
+
+
+def test_play_edge_reflex_turns_inward_before_bounce():
+    fly = FlyAgent("test-edge", "TEST EDGE", 10, 0.94, 0.5, controller="play")
+    fly.heading = 0.0
+    world = World(seed=1)
+    snapshot = world.sensory_snapshot(fly.x, fly.y, fly.heading, 0.0)
+    turn, _, assists = fly._play_assists(snapshot, 0.0, 0.0)
+    assert abs(assists["edge"]) > 0.10
+    assert abs(turn) > 0.10
