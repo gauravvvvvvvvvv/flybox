@@ -193,6 +193,7 @@ class SimulationEngine:
             "running": self.running,
             "speed": self.speed,
             "mock": self.mock,
+            "viewers": self.active_clients,
             "flies": frames,
             "world": self.world.to_dict(),
             "events": list(self.events)[-40:],
