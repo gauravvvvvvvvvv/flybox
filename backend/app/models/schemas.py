@@ -55,10 +55,6 @@ class ConsoleIn(BaseModel):
     command: str = Field(min_length=1, max_length=200)
 
 
-class ShareCodeIn(BaseModel):
-    code: str = Field(min_length=1, max_length=200_000)
-
-
 class BrainCouplingIn(BaseModel):
     source: str
     target: str
