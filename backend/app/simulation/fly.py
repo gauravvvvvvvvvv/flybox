@@ -324,6 +324,7 @@ class FlyAgent:
             "motor": motor,
             "senses": senses,
             "assists": assists,
+            "trail": self.trajectory[-180:],
             "sampled_fired": fired_arr[:256].astype(int).tolist(),
             "interventions": self.interventions.serialized()[-8:],
         }
