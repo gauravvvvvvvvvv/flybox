@@ -359,7 +359,9 @@ export default function App() {
                   <Signal label="FORAGE STEER" value={Math.abs(fly?.assists?.forage ?? 0)} max={1.25} />
                   <Signal label="TARGET / GOAL" value={Math.abs(fly?.assists?.target ?? 0)} max={1.65} />
                   <Signal label="SOUND / LIGHT ORIENT" value={Math.abs(fly?.assists?.orient ?? 0)} max={0.65} />
-                  <Signal label="PREDATOR AVOID" value={Math.abs(fly?.assists?.avoid ?? 0)} max={2.0} />
+                  <Signal label="PREDATOR / LOOM AVOID" value={Math.abs(fly?.assists?.avoid ?? 0)} max={2.25} />
+                  <Signal label="WALL AVOID" value={Math.abs(fly?.assists?.obstacle ?? 0)} max={2.6} />
+                  <Signal label="EDGE REFLEX" value={Math.abs(fly?.assists?.edge ?? 0)} max={2.7} />
                   <Signal label="SEARCH WOBBLE" value={Math.abs(fly?.assists?.search ?? 0)} max={0.6} />
                   <p className="microcopy">These body commands make PLAY fun. Switch to PURE LAB to remove all three.</p>
                 </section>
@@ -616,6 +618,12 @@ function WhyCard({ fly }: any) {
   } else if (fly.state === "POSSESSED") {
     title = "You are driving the body.";
     detail = "WASD adds an explicit manual body command while the connectome keeps receiving sensory input.";
+  } else if (Math.abs(fly.assists?.obstacle ?? 0) > 0.10) {
+    title = "It sees a wall in its path and is turning away.";
+    detail = "Wall avoidance is a PLAY reflex before collision; physical contact also produces an SNta touch input and a stronger tactile turn.";
+  } else if (Math.abs(fly.assists?.edge ?? 0) > 0.10) {
+    title = "It is turning back into the arena.";
+    detail = "PLAY treats the box edge like a wall before impact. If it still reaches the boundary, the body reflects and continues instead of getting pinned.";
   } else if (Math.abs(fly.assists?.target ?? 0) > 0.08) {
     title = "It is steering toward the target.";
     detail = "TARGET/GOAL steering is an explicit PLAY assist. The target also drives the experimental LC10a sensory encoder; PURE LAB removes the body assist.";
