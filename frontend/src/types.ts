@@ -67,6 +67,7 @@ export type FlyFrame = {
   motor: Record<string, number>;
   senses: Record<string, number>;
   assists: Record<string, number>;
+  trail: { t: number; x: number; y: number }[];
   sampled_fired: number[];
   interventions: Array<Record<string, unknown>>;
 };
