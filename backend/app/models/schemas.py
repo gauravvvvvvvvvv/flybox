@@ -58,6 +58,13 @@ class ShareCodeIn(BaseModel):
     code: str = Field(min_length=1, max_length=200_000)
 
 
+class BrainCouplingIn(BaseModel):
+    source: str
+    target: str
+    population: str = "LC10a"
+    gain: float = Field(default=0.5, ge=0.0, le=10.0)
+
+
 class Command(BaseModel):
     action: str
     payload: dict[str, Any] = Field(default_factory=dict)
