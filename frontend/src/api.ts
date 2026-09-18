@@ -1,5 +1,17 @@
-export const API = import.meta.env.VITE_API_URL ?? "http://localhost:8000";
-export const WS = import.meta.env.VITE_WS_URL ?? "ws://localhost:8000/ws";
+const isDev = import.meta.env.DEV;
+
+export const API =
+  import.meta.env.VITE_API_URL ??
+  (isDev ? "http://localhost:8000" : "");
+
+const defaultWs =
+  typeof window === "undefined"
+    ? "ws://localhost:8000/ws"
+    : isDev
+      ? "ws://localhost:8000/ws"
+      : `${window.location.protocol === "https:" ? "wss:" : "ws:"}//${window.location.host}/ws`;
+
+export const WS = import.meta.env.VITE_WS_URL ?? defaultWs;
 
 export async function post(path: string, body?: unknown) {
   const response = await fetch(API + path, {
