@@ -84,6 +84,7 @@ export type Frame = {
   challenge: ChallengeState;
   achievements: Achievement[];
   couplings: { source: string; target: string; population: string; gain: number; kind: string }[];
+  comparisons: { a: string; b: string; a_name: string; b_name: string; neural_divergence: number; behavioral_divergence: number; energy_delta: number }[];
 };
 
 export type Metadata = {
