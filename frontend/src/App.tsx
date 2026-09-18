@@ -486,9 +486,20 @@ export default function App() {
         <div className="timeline-head">
           <span>TIME MACHINE / LIVE LOG</span>
           <span>T+ {frame?.t.toFixed(3) ?? "0.000"} s</span>
+          <button onClick={() => safe(() => post("/api/time/checkpoint"))}>SAVE MOMENT</button>
+          <button disabled={(frame?.checkpoints.length ?? 0) === 0} onClick={() => safe(() => post("/api/time/rewind"))}>↶ REWIND</button>
           <button onClick={() => setConsoleOpen(!consoleOpen)}>&gt;_ CONSOLE</button>
           <a href={`${API}/api/experiments/export`} target="_blank">EXPORT JSON</a>
         </div>
+        {(frame?.checkpoints.length ?? 0) > 0 && (
+          <div className="checkpoint-strip">
+            {frame?.checkpoints.slice(-6).map((cp) => (
+              <button key={cp.id} onClick={() => safe(() => post(`/api/time/rewind?checkpoint_id=${cp.id}`))}>
+                ↶ {cp.label}
+              </button>
+            ))}
+          </div>
+        )}
         {consoleOpen && (
           <div className="console">
             <span>&gt;</span>
