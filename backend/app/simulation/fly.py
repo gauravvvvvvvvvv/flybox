@@ -268,13 +268,13 @@ class FlyAgent:
             nx, ny, old_x, old_y, self.heading
         )
 
-        feeding, eaten = world.feed(self.x, self.y)
+        feeding, eaten, finished_food = world.feed(self.x, self.y)
         if feeding and escape < 0.2:
             self.velocity = 0.0
             self.x, self.y = old_x, old_y
             self.energy = min(100.0, self.energy + eaten * 70.0)
-            if eaten > 0:
-                self.food_eaten += int(eaten >= 0.003)
+            if finished_food:
+                self.food_eaten += 1
             self.state = "FEEDING"
         elif escape > 0.35:
             self.state = "ESCAPING"
