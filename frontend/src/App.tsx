@@ -40,6 +40,8 @@ export default function App() {
   const [consoleText, setConsoleText] = useState("");
   const [audioOn, setAudioOn] = useState(false);
   const [cinematic, setCinematic] = useState(false);
+  const [batchBusy, setBatchBusy] = useState(false);
+  const [batchResult, setBatchResult] = useState<any>(null);
   const keys = useRef(new Set<string>());
   const lastMove = useRef(0);
   const audio = useRef<{ ctx: AudioContext; osc: OscillatorNode; gain: GainNode } | null>(null);
@@ -201,6 +203,22 @@ export default function App() {
     setAudioOn(true);
   }
 
+  async function runBatchProbe() {
+    setBatchBusy(true);
+    try {
+      const result = await safe(() => post("/api/batch/probe", {
+        population: selectedPopulation,
+        amount: 0.8,
+        steps: 50,
+        replicates: 4,
+        seed: frame?.world.seed ?? 64,
+      }));
+      if (result) setBatchResult(result);
+    } finally {
+      setBatchBusy(false);
+    }
+  }
+
   async function runConsole() {
     const command = consoleText.trim();
     if (!command) return;
@@ -287,7 +305,7 @@ export default function App() {
             <button onClick={() => safe(() => post("/api/simulation/resume"))}>PLAY</button>
             <button onClick={() => safe(() => post("/api/simulation/step"))}>+20 ms</button>
             <button onClick={() => safe(() => post("/api/simulation/reset"))}>RESET BOX</button>
-            {[0.25,1,2,5,10].map((speed) => (
+            {[0.05,0.25,1,2,5,10].map((speed) => (
               <button key={speed} className={frame?.speed === speed ? "active" : ""} onClick={() => safe(() => post(`/api/simulation/speed/${speed}`))}>
                 {speed}×
               </button>
@@ -327,6 +345,8 @@ export default function App() {
                   ))}
                 </div>
               </section>
+
+              <WhyCard fly={fly} />
 
               <section className="control-section">
                 <div className="section-label">BRAIN → BODY RULES</div>
@@ -420,6 +440,21 @@ export default function App() {
                     <span>{row.name}</span><b>{row.firing}/{row.neurons}</b>
                   </div>
                 ))}
+              </section>
+
+              <section className="control-section">
+                <div className="section-label">BATCH SCIENCE PROBE</div>
+                <p className="microcopy">Run 4 independent neural states on one shared FlyBrain connectome for 50 steps while stimulating the selected population.</p>
+                <button className="wide" disabled={batchBusy || frame?.mock} onClick={runBatchProbe}>
+                  {frame?.mock ? "REAL FLYBRAIN REQUIRED" : batchBusy ? "RUNNING…" : `RUN 4× ${selectedPopulation} PROBE`}
+                </button>
+                {batchResult && (
+                  <div className="batch-result">
+                    <span>{batchResult.population} · {batchResult.population_neurons} neurons</span>
+                    <b>DN TRACE {batchResult.summary.mean_dn_trace.toFixed(3)} ± {batchResult.summary.sd_dn_trace.toFixed(3)}</b>
+                    <small>{batchResult.steps} steps · {batchResult.replicates} replicates · seed {batchResult.seed}</small>
+                  </div>
+                )}
               </section>
 
               <Provenance metadata={metadata} />
@@ -551,6 +586,43 @@ function AgentHeader({ fly, nameDraft, setNameDraft, onRename, onSpawn, onFork }
         <button onClick={onRename}>RENAME</button>
       </div>
     </>
+  );
+}
+
+function WhyCard({ fly }: any) {
+  if (!fly) return null;
+  let title = "It is deciding what to do.";
+  let detail = "The connectome is running; PLAY may also add the labeled locomotion assist so the embodied agent can explore.";
+
+  if (!fly.alive) {
+    title = fly.state === "CAUGHT" ? "The predator caught it." : "It ran out of energy.";
+    detail = "Death/energy are game mechanics; the neural state is still reported separately.";
+  } else if (fly.state === "FEEDING") {
+    title = "It found food and stopped to eat.";
+    detail = "Food creates an ORN_DM1/ORN_DM2 odor input. Feeding and energy gain are game mechanics.";
+  } else if (fly.state === "ESCAPING") {
+    title = "Its escape channel fired strongly.";
+    detail = "Looming/threat encoders can drive LPLC2/LC4; the displayed escape readout is DNp01.";
+  } else if (fly.state === "POSSESSED") {
+    title = "You are driving the body.";
+    detail = "WASD adds an explicit manual body command while the connectome keeps receiving sensory input.";
+  } else if ((fly.senses?.food_odor ?? 0) > 0.15) {
+    title = "It can smell nearby food.";
+    detail = `Food odor input is ${fly.senses.food_odor.toFixed(2)}. In PLAY, hunger makes that cue more influential on the game locomotion assist.`;
+  } else if ((fly.senses?.loom ?? 0) > 0.08) {
+    title = "Something is expanding in its view.";
+    detail = "Angular growth drives the experimental LPLC2 looming encoder; downstream connectome activity remains simulated FlyBrain output.";
+  } else if (fly.controller === "lab" && Math.abs(fly.speed) < 0.01) {
+    title = "It is sitting still — and that is valid.";
+    detail = "LAB removes the locomotion assist. This simplified spiking connectome often does not produce a strong DNg100 walking command from ordinary sensory input.";
+  }
+
+  return (
+    <section className="why-card">
+      <span>WHY?</span>
+      <strong>{title}</strong>
+      <p>{detail}</p>
+    </section>
   );
 }
 
