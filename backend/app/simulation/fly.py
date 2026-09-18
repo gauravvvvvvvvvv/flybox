@@ -369,6 +369,9 @@ class FlyAgent:
         self.velocity = float(np.clip(speed, -0.24, 0.28))
         nx = self.x + math.cos(self.heading) * self.velocity * self.dt
         ny = self.y + math.sin(self.heading) * self.velocity * self.dt
+        if self.body_type != "synth":
+            nx += world.wind_x * self.dt
+            ny += world.wind_y * self.dt
         self.x, self.y, self.touch_side = world.collide_and_clamp(
             nx, ny, old_x, old_y, self.heading
         )
