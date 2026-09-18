@@ -9,7 +9,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
 
-from .models.schemas import ConsoleIn, InterventionIn, ManualDriveIn, RenameIn, ShareCodeIn, WorldObjectIn
+from .models.schemas import BrainCouplingIn, ConsoleIn, InterventionIn, ManualDriveIn, RenameIn, ShareCodeIn, WorldObjectIn
 from .simulation.challenges import CHALLENGES
 from .simulation.engine import SimulationEngine
 
@@ -237,6 +237,25 @@ async def sensory_gain(fly_id: str, gain: float):
         return {"gain": gain}
     except ValueError as exc:
         raise HTTPException(404, str(exc)) from exc
+
+
+@app.post("/api/couplings")
+async def connect_brains(payload: BrainCouplingIn):
+    try:
+        return await get_engine().connect_brains(
+            payload.source,
+            payload.target,
+            payload.population,
+            payload.gain,
+        )
+    except ValueError as exc:
+        raise HTTPException(400, str(exc)) from exc
+
+
+@app.delete("/api/couplings")
+async def disconnect_brains():
+    await get_engine().disconnect_brains()
+    return {"ok": True}
 
 
 @app.get("/api/challenges")
