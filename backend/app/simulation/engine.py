@@ -28,6 +28,7 @@ class SimulationEngine:
         self._lock = asyncio.Lock()
         self._last_frames: dict[str, dict] = {}
         self._started_at = time.time()
+        self.active_clients = 0
         self._create_prime()
 
     @property
@@ -285,7 +286,7 @@ class SimulationEngine:
 
     async def run_loop(self):
         while True:
-            if not self.running:
+            if not self.running or self.active_clients <= 0:
                 await asyncio.sleep(0.05)
                 continue
             started = time.perf_counter()
