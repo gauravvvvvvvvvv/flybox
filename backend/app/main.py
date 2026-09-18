@@ -6,6 +6,7 @@ import re
 from contextlib import asynccontextmanager
 from contextvars import ContextVar
 from dataclasses import dataclass
+from urllib.parse import parse_qs, urlsplit
 
 from fastapi import FastAPI, HTTPException, Request, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
@@ -422,10 +423,183 @@ async def import_experiment(payload: dict):
         raise HTTPException(400, str(exc)) from exc
 
 
+async def _ws_api(engine: SimulationEngine, method: str, raw_path: str, body: dict | None):
+    body = body or {}
+    parsed = urlsplit(raw_path)
+    path = parsed.path
+    query = parse_qs(parsed.query)
+
+    def first(name: str, default=None):
+        values = query.get(name)
+        return values[0] if values else default
+
+    if method == "GET":
+        if path == "/api/state":
+            return engine.frame_payload()
+        if path == "/api/metadata":
+            return engine.metadata()
+        if path == "/api/challenges":
+            return {"challenges": CHALLENGES}
+        if path == "/api/experiments/export":
+            return engine.export_experiment()
+
+        match = re.fullmatch(r"/api/brain/([^/]+)/sample", path)
+        if match:
+            return engine.brain_view(match.group(1))
+
+        match = re.fullmatch(r"/api/populations/([^/]+)", path)
+        if match:
+            return {"populations": engine.populations(match.group(1))}
+
+    if method == "POST":
+        if path == "/api/simulation/pause":
+            engine.running = False
+            return {"running": False}
+        if path == "/api/simulation/resume":
+            engine.running = True
+            return {"running": True}
+        if path == "/api/simulation/step":
+            return await engine.step_once()
+        if path == "/api/simulation/reset":
+            await engine.reset()
+            return engine.frame_payload()
+
+        match = re.fullmatch(r"/api/simulation/speed/([0-9.]+)", path)
+        if match:
+            value = float(match.group(1))
+            if value not in {0.05, 0.25, 1, 2, 5, 10}:
+                raise ValueError("speed must be 0.05, 0.25, 1, 2, 5, or 10")
+            engine.speed = value
+            return {"speed": value}
+
+        if path == "/api/flies":
+            clone_prime = str(first("clone_prime", "false")).lower() == "true"
+            return await engine.add_fly(
+                clone_prime=clone_prime,
+                name=first("name"),
+                body_type=first("body_type", "fly"),
+                controller=first("controller"),
+            )
+
+        match = re.fullmatch(r"/api/flies/([^/]+)/fork", path)
+        if match:
+            return await engine.fork_fly(match.group(1))
+
+        match = re.fullmatch(r"/api/flies/([^/]+)/rename", path)
+        if match:
+            await engine.rename_fly(match.group(1), str(body.get("name", "")))
+            return {"ok": True}
+
+        match = re.fullmatch(r"/api/flies/([^/]+)/body/([^/]+)", path)
+        if match:
+            await engine.set_body(match.group(1), match.group(2))
+            return {"ok": True, "body_type": match.group(2)}
+
+        match = re.fullmatch(r"/api/flies/([^/]+)/controller/([^/]+)", path)
+        if match:
+            await engine.set_controller(match.group(1), match.group(2))
+            return {"ok": True, "controller": match.group(2)}
+
+        match = re.fullmatch(r"/api/flies/([^/]+)/move", path)
+        if match:
+            await engine.move_fly(match.group(1), float(first("x")), float(first("y")))
+            return {"ok": True}
+
+        match = re.fullmatch(r"/api/flies/([^/]+)/drive", path)
+        if match:
+            await engine.manual_drive(match.group(1), float(body.get("turn", 0)), float(body.get("throttle", 0)))
+            return {"ok": True}
+
+        match = re.fullmatch(r"/api/flies/([^/]+)/interventions", path)
+        if match:
+            return await engine.apply_intervention(match.group(1), body)
+
+        match = re.fullmatch(r"/api/flies/([^/]+)/sensory-gain/([0-9.]+)", path)
+        if match:
+            gain = float(match.group(2))
+            await engine.set_sensory_gain(match.group(1), gain)
+            return {"gain": gain}
+
+        if path == "/api/world/environment":
+            await engine.set_environment(
+                float(body.get("daylight", 1)),
+                float(body.get("wind_x", 0)),
+                float(body.get("wind_y", 0)),
+            )
+            return engine.frame_payload()
+
+        if path == "/api/world":
+            return await engine.add_world_object(body)
+
+        match = re.fullmatch(r"/api/world/([^/]+)/move", path)
+        if match:
+            await engine.move_world_object(match.group(1), float(first("x")), float(first("y")))
+            return {"ok": True}
+
+        if path == "/api/world/randomize":
+            seed = first("seed")
+            await engine.randomize_world(None if seed is None else int(seed))
+            return engine.frame_payload()
+
+        if path == "/api/world/daily":
+            seed = await engine.daily_world()
+            return {"seed": seed, "frame": engine.frame_payload()}
+
+        if path == "/api/couplings":
+            return await engine.connect_brains(
+                str(body["source"]),
+                str(body["target"]),
+                str(body.get("population", "LC10a")),
+                float(body.get("gain", 0.5)),
+            )
+
+        if path == "/api/challenges/mystery/reveal":
+            return {"secret": engine.reveal_mystery()}
+
+        match = re.fullmatch(r"/api/challenges/([^/]+)", path)
+        if match:
+            await engine.start_challenge(match.group(1))
+            return engine.challenge_state()
+
+        if path == "/api/console":
+            return await engine.console(str(body.get("command", "")))
+
+        if path == "/api/time/checkpoint":
+            return await engine.create_checkpoint(first("label"))
+
+        if path == "/api/time/rewind":
+            return await engine.rewind(first("checkpoint_id"))
+
+        if path == "/api/experiments/import":
+            await engine.import_experiment(body)
+            return engine.frame_payload()
+
+    if method == "DELETE":
+        if path == "/api/world":
+            await engine.clear_world()
+            return {"ok": True}
+        if path == "/api/couplings":
+            await engine.disconnect_brains()
+            return {"ok": True}
+
+        match = re.fullmatch(r"/api/world/([^/]+)", path)
+        if match:
+            await engine.remove_world_object(match.group(1))
+            return {"ok": True}
+
+        match = re.fullmatch(r"/api/flies/([^/]+)", path)
+        if match:
+            await engine.remove_fly(match.group(1))
+            return {"ok": True}
+
+    raise ValueError(f"unsupported websocket API route: {method} {raw_path}")
+
+
 @app.websocket("/ws")
 async def websocket_endpoint(ws: WebSocket):
     await ws.accept()
     sid = ws.query_params.get("sid")
+    explicit_close = False
     try:
         runtime = _runtime_for(_session_id(sid))
     except HTTPException as exc:
@@ -433,7 +607,11 @@ async def websocket_endpoint(ws: WebSocket):
         await ws.close(code=1008)
         return
     except Exception as exc:
-        await ws.send_json({"type": "error", "message": "FlyBrain backend unavailable.", "error": f"{type(exc).__name__}: {exc}"})
+        await ws.send_json({
+            "type": "error",
+            "message": "FlyBrain backend unavailable.",
+            "error": f"{type(exc).__name__}: {exc}",
+        })
         await ws.close(code=1011)
         return
 
@@ -445,15 +623,52 @@ async def websocket_endpoint(ws: WebSocket):
 
     try:
         while True:
+            try:
+                message = await asyncio.wait_for(ws.receive_json(), timeout=1 / 20)
+            except asyncio.TimeoutError:
+                message = None
+
+            if message:
+                message_type = message.get("type")
+                if message_type == "close":
+                    explicit_close = True
+                    break
+                if message_type == "rpc":
+                    rpc_id = message.get("id")
+                    try:
+                        data = await _ws_api(
+                            runtime.engine,
+                            str(message.get("method", "GET")).upper(),
+                            str(message.get("path", "")),
+                            message.get("body"),
+                        )
+                        await ws.send_json({
+                            "type": "rpc_result",
+                            "id": rpc_id,
+                            "ok": True,
+                            "data": data,
+                        })
+                    except Exception as exc:
+                        await ws.send_json({
+                            "type": "rpc_result",
+                            "id": rpc_id,
+                            "ok": False,
+                            "error": str(exc),
+                        })
+
             await ws.send_json(runtime.engine.frame_payload())
-            await asyncio.sleep(1 / 20)
     except (WebSocketDisconnect, RuntimeError):
         pass
     finally:
         runtime.clients = max(0, runtime.clients - 1)
         runtime.engine.active_clients = max(0, runtime.engine.active_clients - 1)
-        if runtime.clients == 0 and _sessions.get(_session_id(sid)) is runtime:
-            runtime.cleanup_task = asyncio.create_task(_cleanup_session_later(_session_id(sid), runtime))
+        valid_sid = _session_id(sid)
+        if explicit_close:
+            _destroy_session(valid_sid)
+        elif runtime.clients == 0 and _sessions.get(valid_sid) is runtime:
+            runtime.cleanup_task = asyncio.create_task(
+                _cleanup_session_later(valid_sid, runtime)
+            )
 
 
 static_dir = os.getenv("FLYLAB_STATIC_DIR")
