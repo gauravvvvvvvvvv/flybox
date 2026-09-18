@@ -5,6 +5,7 @@ import asyncio
 import numpy as np
 
 from app.simulation.engine import SimulationEngine
+from app.simulation.fly import FlyAgent
 from app.simulation.interventions import InterventionManager
 from app.simulation.mappings import MotorDecoder, SensoryEncoder
 from app.simulation.measurements import jaccard_distance
@@ -22,6 +23,27 @@ def test_world_boundary_is_deterministic():
     x, y, touch = world.collide_and_clamp(-1, 2, 0.5, 0.5, 0.0)
     assert (x, y) == (0.02, 0.98)
     assert touch is None
+
+
+
+def test_world_boundary_bounce_reflects_heading():
+    world = World(seed=1)
+    x, y, heading, bounced = world.bounce_bounds(1.01, 0.5, 0.0)
+    assert bounced is True
+    assert x < 0.98
+    assert y == 0.5
+    assert abs(heading - np.pi) < 1e-9
+
+
+def test_play_target_creates_visible_steering_assist():
+    fly = FlyAgent("test", "TEST", 7, 0.4, 0.5, controller="play")
+    world = World(seed=1)
+    world.add("stimulus", 0.72, 0.72, intensity=1.0, radius=0.03, label="target")
+    snapshot = world.sensory_snapshot(fly.x, fly.y, fly.heading, 0.0)
+    turn, throttle, assists = fly._play_assists(snapshot, 0.0, 0.0)
+    assert abs(assists["target"]) > 0.05
+    assert abs(turn) > 0.05
+    assert throttle > 0
 
 
 def test_food_emits_odor_and_sound_pulses():
