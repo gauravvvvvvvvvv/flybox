@@ -168,6 +168,15 @@ async def export_experiment():
     return get_engine().export_experiment()
 
 
+@app.post("/api/experiments/import")
+async def import_experiment(payload: dict):
+    try:
+        await get_engine().import_experiment(payload)
+        return get_engine().frame_payload()
+    except ValueError as exc:
+        raise HTTPException(400, str(exc)) from exc
+
+
 @app.websocket("/ws")
 async def websocket_endpoint(ws: WebSocket):
     await ws.accept()
