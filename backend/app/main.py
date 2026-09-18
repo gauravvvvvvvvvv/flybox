@@ -2,35 +2,88 @@ from __future__ import annotations
 
 import asyncio
 import os
+import re
 from contextlib import asynccontextmanager
+from contextvars import ContextVar
+from dataclasses import dataclass
 
-from fastapi import FastAPI, HTTPException, WebSocket, WebSocketDisconnect
+from fastapi import FastAPI, HTTPException, Request, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
 
-from .models.schemas import BatchProbeIn, BrainCouplingIn, ConsoleIn, EnvironmentIn, InterventionIn, ManualDriveIn, RenameIn, ShareCodeIn, WorldObjectIn
+from .models.schemas import BatchProbeIn, BrainCouplingIn, ConsoleIn, EnvironmentIn, InterventionIn, ManualDriveIn, RenameIn, WorldObjectIn
 from .simulation.batch import run_batch_probe
 from .simulation.challenges import CHALLENGES
 from .simulation.engine import SimulationEngine
 
-engine: SimulationEngine | None = None
-startup_error: str | None = None
-runner_task: asyncio.Task | None = None
+
+@dataclass
+class SessionRuntime:
+    engine: SimulationEngine
+    runner_task: asyncio.Task
+    clients: int = 0
+    cleanup_task: asyncio.Task | None = None
+
+
+_sessions: dict[str, SessionRuntime] = {}
+_current_session: ContextVar[str | None] = ContextVar("flybox_session", default=None)
+_SESSION_RE = re.compile(r"^[A-Za-z0-9._:-]{8,128}$")
+_SESSION_GRACE_SECONDS = float(os.getenv("FLYLAB_SESSION_GRACE_SECONDS", "8"))
+_MAX_SESSIONS = int(os.getenv("FLYLAB_MAX_SESSIONS", "2"))
+
+
+def _session_id(value: str | None) -> str:
+    if value is None or not _SESSION_RE.fullmatch(value):
+        raise HTTPException(400, "missing or invalid ephemeral FLYBOX session id")
+    return value
+
+
+def _destroy_session(session_id: str) -> None:
+    runtime = _sessions.pop(session_id, None)
+    if runtime is None:
+        return
+    if runtime.cleanup_task and runtime.cleanup_task is not asyncio.current_task():
+        runtime.cleanup_task.cancel()
+    runtime.runner_task.cancel()
+
+
+async def _cleanup_session_later(session_id: str, runtime: SessionRuntime) -> None:
+    await asyncio.sleep(_SESSION_GRACE_SECONDS)
+    current = _sessions.get(session_id)
+    if current is runtime and runtime.clients <= 0:
+        _destroy_session(session_id)
+
+
+def _runtime_for(session_id: str) -> SessionRuntime:
+    session_id = _session_id(session_id)
+    existing = _sessions.get(session_id)
+    if existing is not None:
+        if existing.cleanup_task:
+            existing.cleanup_task.cancel()
+            existing.cleanup_task = None
+        return existing
+
+    # Reclaim already-disconnected sandboxes first. There is intentionally no
+    # persistence layer: an idle sandbox is disposable.
+    for old_id, runtime in list(_sessions.items()):
+        if runtime.clients <= 0:
+            _destroy_session(old_id)
+
+    if len(_sessions) >= _MAX_SESSIONS:
+        raise HTTPException(503, "this FLYBOX worker is at its temporary sandbox limit; retry shortly")
+
+    engine = SimulationEngine(seed=int(os.getenv("FLYLAB_SEED", "64")))
+    runner = asyncio.get_running_loop().create_task(engine.run_loop())
+    runtime = SessionRuntime(engine=engine, runner_task=runner)
+    _sessions[session_id] = runtime
+    return runtime
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    global engine, startup_error, runner_task
-    try:
-        engine = SimulationEngine(seed=int(os.getenv("FLYLAB_SEED", "64")))
-        runner_task = asyncio.create_task(engine.run_loop())
-    except Exception as exc:
-        startup_error = f"{type(exc).__name__}: {exc}"
-        engine = None
     yield
-    if runner_task:
-        runner_task.cancel()
+    for session_id in list(_sessions):
+        _destroy_session(session_id)
 
 
 app = FastAPI(title="FLYBOX API", version="0.2.0", lifespan=lifespan)
@@ -43,23 +96,38 @@ app.add_middleware(
 )
 
 
+@app.middleware("http")
+async def bind_ephemeral_session(request: Request, call_next):
+    if request.url.path.startswith("/api/") and request.url.path != "/api/health":
+        sid = request.headers.get("X-Flybox-Session") or request.query_params.get("sid")
+        token = _current_session.set(sid)
+        try:
+            return await call_next(request)
+        finally:
+            _current_session.reset(token)
+    return await call_next(request)
+
+
 def get_engine() -> SimulationEngine:
-    if engine is None:
-        raise HTTPException(
-            status_code=503,
-            detail={"message": "FlyBrain backend unavailable.", "error": startup_error},
-        )
-    return engine
+    sid = _session_id(_current_session.get())
+    return _runtime_for(sid).engine
 
 
 @app.get("/api/health")
 async def health():
-    if engine is None:
-        return JSONResponse(
-            status_code=503,
-            content={"ok": False, "message": "FlyBrain backend unavailable.", "error": startup_error},
-        )
-    return {"ok": True, "mock": engine.mock, **engine.metadata()}
+    return {
+        "ok": True,
+        "session_mode": "ephemeral-per-page",
+        "active_sandboxes": len(_sessions),
+        "max_sandboxes_per_worker": _MAX_SESSIONS,
+    }
+
+
+@app.post("/api/session/close")
+async def close_session():
+    sid = _session_id(_current_session.get())
+    _destroy_session(sid)
+    return {"ok": True, "discarded": True}
 
 
 @app.get("/api/state")
@@ -371,27 +439,35 @@ async def import_experiment(payload: dict):
 @app.websocket("/ws")
 async def websocket_endpoint(ws: WebSocket):
     await ws.accept()
-    connected_engine = engine
-    if connected_engine is not None:
-        connected_engine.active_clients += 1
+    sid = ws.query_params.get("sid")
+    try:
+        runtime = _runtime_for(_session_id(sid))
+    except HTTPException as exc:
+        await ws.send_json({"type": "error", "message": str(exc.detail)})
+        await ws.close(code=1008)
+        return
+    except Exception as exc:
+        await ws.send_json({"type": "error", "message": "FlyBrain backend unavailable.", "error": f"{type(exc).__name__}: {exc}"})
+        await ws.close(code=1011)
+        return
+
+    runtime.clients += 1
+    runtime.engine.active_clients += 1
+    if runtime.cleanup_task:
+        runtime.cleanup_task.cancel()
+        runtime.cleanup_task = None
+
     try:
         while True:
-            sim = engine
-            if sim is None:
-                await ws.send_json({
-                    "type": "error",
-                    "message": "FlyBrain backend unavailable.",
-                    "error": startup_error,
-                })
-                await asyncio.sleep(1)
-                continue
-            await ws.send_json(sim.frame_payload())
+            await ws.send_json(runtime.engine.frame_payload())
             await asyncio.sleep(1 / 20)
-    except WebSocketDisconnect:
-        return
+    except (WebSocketDisconnect, RuntimeError):
+        pass
     finally:
-        if connected_engine is not None:
-            connected_engine.active_clients = max(0, connected_engine.active_clients - 1)
+        runtime.clients = max(0, runtime.clients - 1)
+        runtime.engine.active_clients = max(0, runtime.engine.active_clients - 1)
+        if runtime.clients == 0 and _sessions.get(_session_id(sid)) is runtime:
+            runtime.cleanup_task = asyncio.create_task(_cleanup_session_later(_session_id(sid), runtime))
 
 
 static_dir = os.getenv("FLYLAB_STATIC_DIR")
