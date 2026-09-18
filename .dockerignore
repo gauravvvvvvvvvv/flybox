@@ -1,0 +1,10 @@
+.git
+.github
+.venv
+**/__pycache__
+**/*.pyc
+backend/.env
+frontend/node_modules
+frontend/dist
+fly-data
+*.npz
