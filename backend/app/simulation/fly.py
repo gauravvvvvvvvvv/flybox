@@ -179,6 +179,10 @@ class FlyAgent:
             "encoder_previous_size": dict(self.encoder.previous_size),
             "encoder_last": dict(self.encoder.last),
             "interventions": copy.deepcopy(self.interventions.serialized()),
+            "pending_stimulation": [
+                (idx.copy(), copy.deepcopy(amount))
+                for idx, amount in self.interventions.pending_stimulation
+            ],
         }
 
     def restore_runtime_snapshot(self, snapshot: dict) -> None:
@@ -192,6 +196,10 @@ class FlyAgent:
         for item in snapshot.get("interventions", []):
             if item.get("active") and item.get("type") in {"silence_population", "random_synapse_lesion"}:
                 self.interventions.apply(item, float(item.get("time", 0.0)))
+        self.interventions.pending_stimulation = [
+            (np.asarray(idx).copy(), copy.deepcopy(amount))
+            for idx, amount in snapshot.get("pending_stimulation", [])
+        ]
 
         brain_state = snapshot["brain"]
         if not self.mock:
