@@ -88,7 +88,7 @@ export default function HomeDocs({ onEnter }: { onEnter: EnterHandler }) {
       <div className="home-doc-grid" />
 
       <nav className="home-doc-nav">
-        <a className="home-doc-logo" href="#top">FLYBOX</a>
+        <a className="home-doc-logo" href="#top">FLYBOX</a><a className="home-live-url" href="https://flyboxlab.vercel.app/" target="_blank" rel="noreferrer">flyboxlab.vercel.app</a>
         <div className="home-doc-links">
           <a href="#controls">CONTROLS</a>
           <a href="#elements">ELEMENTS</a>
