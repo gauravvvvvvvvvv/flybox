@@ -285,6 +285,22 @@ async def console(payload: ConsoleIn):
         raise HTTPException(400, str(exc)) from exc
 
 
+@app.post("/api/time/checkpoint")
+async def create_checkpoint(label: str | None = None):
+    try:
+        return await get_engine().create_checkpoint(label)
+    except ValueError as exc:
+        raise HTTPException(400, str(exc)) from exc
+
+
+@app.post("/api/time/rewind")
+async def rewind(checkpoint_id: str | None = None):
+    try:
+        return await get_engine().rewind(checkpoint_id)
+    except ValueError as exc:
+        raise HTTPException(400, str(exc)) from exc
+
+
 @app.get("/api/share")
 async def share_box():
     return {"code": get_engine().share_code()}
