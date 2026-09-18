@@ -328,3 +328,25 @@ The architecture is ready to extend with:
 - artificial brain-to-brain coupling
 
 Those are intentionally secondary to keeping the core simulation honest and operational.
+
+
+## Deploy to Vercel
+
+The repository includes a root `Dockerfile.vercel`. Vercel will build the React/Vite frontend, bundle the FlyBrain Python backend and connectome data into one container, and serve the frontend, REST API, and WebSocket from one origin.
+
+1. In Vercel, choose **Add New → Project**.
+2. Import the GitHub repository `gauravvvvvvvvvv/flybox`.
+3. Keep the repository root as the project root.
+4. Deploy. Vercel auto-detects `Dockerfile.vercel`.
+5. Open the generated `*.vercel.app` URL.
+
+No `VITE_API_URL` or `VITE_WS_URL` is required in production; the frontend automatically uses the current HTTPS/WSS origin.
+
+The container defaults to `FLYLAB_MAX_FLIES=2` on Vercel to keep memory usage conservative. Override it in Vercel environment variables if your compute tier has enough memory.
+
+### Vercel caveats
+
+- WebSocket support and large functions are currently Vercel public-beta features.
+- FlyBrain's ~260 MB validated connectome is downloaded during the container image build and stored in the image, not downloaded on each cold start.
+- Vercel may recycle an instance. The browser automatically reconnects, but in-memory experiment state is not durable across instance replacement.
+- For durable long-running public experiments, move experiment state to external storage or use a dedicated persistent backend.
