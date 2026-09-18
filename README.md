@@ -348,8 +348,8 @@ The container defaults to `FLYLAB_MAX_FLIES=2` on Vercel to keep memory usage co
 
 - WebSocket support and large functions are currently Vercel public-beta features.
 - FlyBrain's ~260 MB validated connectome is downloaded during the container image build and stored in the image, not downloaded on each cold start.
-- Vercel may recycle an instance. The browser automatically reconnects, but in-memory experiment state is not durable across instance replacement.
-- For durable long-running public experiments, move experiment state to external storage or use a dedicated persistent backend.
+- Vercel may recycle an instance. That intentionally resets the current ephemeral sandbox.
+- No database or persistent session store is required by the product design.
 
 
 ## FLYBOX V2 — Play first, inspect deeper
@@ -416,9 +416,9 @@ The anatomical brain view does not invent coordinates. If position metadata is a
 - daily deterministic world
 - daylight/night presentation
 - wind body mechanic
-- reproducible share links
+- ephemeral per-page sandbox state
 
-A share link stores the sandbox setup in a compressed `#box=...` URL fragment, so it can be passed around without requiring an account/database.
+There are no accounts, rooms, cookies, saved profiles or automatic persistence. Every page load receives a fresh in-memory sandbox.
 
 ### WEIRD
 
@@ -503,11 +503,20 @@ sdk/js/flybox.ts
 examples/hijack.py
 ```
 
-## Shared sessions
+## Ephemeral session model
 
-All connected browsers to one running FLYBOX server see the same in-memory world and can manipulate it together. The header shows a PARTY viewer count when multiple clients are connected.
+FLYBOX intentionally has **no user accounts and no persistent sandbox storage**.
 
-This is deliberately not described as a full multiplayer-room system yet: accounts, room isolation, persistence, moderation and public community-level storage require external persistent infrastructure.
+- Clicking **OPEN THE BOX** creates one temporary server-side simulation for that browser page.
+- A second tab gets a different sandbox.
+- Other visitors never share your world.
+- Closing or leaving the page sends a best-effort discard request.
+- A disconnected sandbox is also deleted automatically after a short grace period.
+- Refreshing creates a new sandbox.
+- Time Machine checkpoints exist only inside the current sandbox.
+- JSON export is explicit and user-initiated; FLYBOX does not automatically save or restore it.
+
+This keeps the product closer to a disposable physics sandbox than a social platform.
 
 ## Resource honesty
 
