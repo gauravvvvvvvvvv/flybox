@@ -484,6 +484,14 @@ class SimulationEngine:
             raise ValueError(f"unknown fly: {fly_id}")
         return fly
 
+    async def move_fly(self, fly_id: str, x: float, y: float):
+        async with self._lock:
+            fly = self._get_fly(fly_id)
+            fly.x = float(np.clip(x, 0.02, 0.98))
+            fly.y = float(np.clip(y, 0.02, 0.98))
+            fly.velocity = 0.0
+            fly.state = "GRABBED"
+
     async def set_environment(self, daylight: float, wind_x: float, wind_y: float):
         async with self._lock:
             self.world.daylight = float(np.clip(daylight, 0, 1))
@@ -496,6 +504,14 @@ class SimulationEngine:
 
     async def add_world_object(self, payload: dict) -> dict:
         async with self._lock:
+            if len(self.world.objects) >= 100:
+                # Odor painting is intentionally bounded; discard the oldest painted
+                # puff before refusing ordinary world objects.
+                oldest_odor = next((item for item in self.world.objects if item.kind == "odor"), None)
+                if oldest_odor is not None:
+                    self.world.remove(oldest_odor.id)
+                else:
+                    raise ValueError("world object limit reached (100)")
             obj = self.world.add(
                 payload["kind"],
                 payload["x"],
