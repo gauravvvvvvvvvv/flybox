@@ -83,6 +83,7 @@ export type Frame = {
   events: { t: number; kind: string; message: string }[];
   challenge: ChallengeState;
   achievements: Achievement[];
+  couplings: { source: string; target: string; population: string; gain: number; kind: string }[];
 };
 
 export type Metadata = {
