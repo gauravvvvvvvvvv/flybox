@@ -48,21 +48,22 @@ export default function App() {
   const audio = useRef<{ ctx: AudioContext; osc: OscillatorNode; gain: GainNode } | null>(null);
 
   useEffect(() => {
+    if (!entered) return;
     get("/api/metadata")
       .then(setMetadata)
       .catch((e) => setError(e instanceof Error ? e.message : String(e)));
-  }, []);
+  }, [entered]);
 
   useEffect(() => {
     const discard = () => closeSession();
     window.addEventListener("pagehide", discard);
     return () => {
       window.removeEventListener("pagehide", discard);
-      closeSession();
     };
   }, []);
 
   useEffect(() => {
+    if (!entered) return;
     let socket: WebSocket | null = null;
     let reconnectTimer: number | null = null;
     let stopped = false;
@@ -90,9 +91,10 @@ export default function App() {
       if (reconnectTimer !== null) window.clearTimeout(reconnectTimer);
       socket?.close();
     };
-  }, []);
+  }, [entered]);
 
   useEffect(() => {
+    if (!entered) return;
     const refresh = () => {
       get(`/api/populations/${selectedFly}`)
         .then((d) => setPopulationRows(d.populations))
@@ -101,7 +103,7 @@ export default function App() {
     refresh();
     const id = window.setInterval(refresh, 650);
     return () => window.clearInterval(id);
-  }, [selectedFly]);
+  }, [selectedFly, entered]);
 
   const fly = useMemo(
     () => frame?.flies.find((item) => item.id === selectedFly) ?? frame?.flies[0],
