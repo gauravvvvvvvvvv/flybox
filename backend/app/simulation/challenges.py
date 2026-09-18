@@ -30,6 +30,18 @@ CHALLENGES = {
         "description": "First agent to the glowing target wins.",
         "goal": "race",
     },
+    "maze": {
+        "name": "Maze Run",
+        "description": "Navigate the walls and take a bite from the fruit at the far end.",
+        "goal": "first_food",
+        "target": 1,
+    },
+    "tournament": {
+        "name": "Mutation Tournament",
+        "description": "Multiple agents share one arena. First to 5 bites wins.",
+        "goal": "first_food",
+        "target": 5,
+    },
     "mystery": {
         "name": "Mystery Brain",
         "description": "One non-primary agent can receive a hidden reproducible intervention.",
