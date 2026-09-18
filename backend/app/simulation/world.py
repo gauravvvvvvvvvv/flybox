@@ -25,6 +25,9 @@ class ArenaObject:
 class World:
     seed: int = 64
     objects: list[ArenaObject] = field(default_factory=list)
+    daylight: float = 1.0
+    wind_x: float = 0.0
+    wind_y: float = 0.0
 
     def add(
         self,
@@ -158,4 +161,10 @@ class World:
         return min(foods, key=lambda obj: math.hypot(obj.x - x, obj.y - y))
 
     def to_dict(self) -> dict:
-        return {"seed": self.seed, "objects": [asdict(obj) for obj in self.objects]}
+        return {
+            "seed": self.seed,
+            "daylight": self.daylight,
+            "wind_x": self.wind_x,
+            "wind_y": self.wind_y,
+            "objects": [asdict(obj) for obj in self.objects],
+        }
