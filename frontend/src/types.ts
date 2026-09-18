@@ -1,5 +1,6 @@
 export type WorldKind =
   | "food"
+  | "odor"
   | "stimulus"
   | "obstacle"
   | "loom"
