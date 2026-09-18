@@ -93,13 +93,14 @@ class World:
         for obj in self.objects:
             rel = self.relative(obj, x, y, heading)
             distance = rel["distance"]
-            if obj.kind == "food":
+            if obj.kind in {"food", "odor"}:
                 # Concentration-like field. It is an experimental encoder rather than
                 # a fluid/odor-plume simulation.
                 rel["drive"] = min(0.8, obj.intensity * obj.amount / (0.12 + 5.0 * distance * distance))
                 food.append(rel)
-                # Food is also a small visible object.
-                visual.append(rel)
+                # Food is also a small visible object; painted odor is not.
+                if obj.kind == "food":
+                    visual.append(rel)
             elif obj.kind in {"stimulus", "loom", "predator", "light", "goal"}:
                 rel["drive"] = min(0.8, obj.intensity / (1.0 + 2.5 * distance))
                 visual.append(rel)
