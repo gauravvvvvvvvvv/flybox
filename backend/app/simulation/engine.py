@@ -696,6 +696,9 @@ class SimulationEngine:
             return self.challenge_state()
         raise ValueError("commands: stim, silence, restore, spawn, fork, random, challenge")
 
+    def brain_view(self, fly_id: str) -> dict:
+        return self._get_fly(fly_id).brain_view_static()
+
     def populations(self, fly_id: str) -> list[dict]:
         return self._get_fly(fly_id).population_status()
 
