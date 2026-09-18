@@ -184,6 +184,15 @@ async def set_controller(fly_id: str, controller: str):
         raise HTTPException(400, str(exc)) from exc
 
 
+@app.post("/api/flies/{fly_id}/move")
+async def move_fly(fly_id: str, x: float, y: float):
+    try:
+        await get_engine().move_fly(fly_id, x, y)
+        return {"ok": True}
+    except ValueError as exc:
+        raise HTTPException(404, str(exc)) from exc
+
+
 @app.post("/api/flies/{fly_id}/drive")
 async def drive(fly_id: str, payload: ManualDriveIn):
     try:
