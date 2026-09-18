@@ -40,7 +40,9 @@ export default function Arena({
     const w = rect.width;
     const h = rect.height;
     ctx.clearRect(0, 0, w, h);
-    ctx.fillStyle = "#080b09";
+    const daylight = frame.world.daylight ?? 1;
+    const shade = Math.round(8 + daylight * 10);
+    ctx.fillStyle = `rgb(${shade - 1},${shade + 2},${shade})`;
     ctx.fillRect(0, 0, w, h);
 
     ctx.strokeStyle = "rgba(174,255,80,.055)";
