@@ -150,6 +150,26 @@ class FlyAgent:
         else:
             return False
 
+        try:
+            other.brain.weights[...] = self.brain.weights
+        except Exception:
+            return False
+        other.interventions.items = copy.deepcopy(self.interventions.items)
+        other.interventions.silenced = {
+            key: value.copy() for key, value in self.interventions.silenced.items()
+        }
+        other.interventions.pending_stimulation = [
+            (idx.copy(), amount) for idx, amount in self.interventions.pending_stimulation
+        ]
+        other.dn_trace.trace[...] = self.dn_trace.trace
+        other.motor.smooth = dict(self.motor.smooth)
+        other.encoder.previous_size = dict(self.encoder.previous_size)
+        other.encoder.last = dict(self.encoder.last)
+        try:
+            other.rng.bit_generator.state = copy.deepcopy(self.rng.bit_generator.state)
+        except Exception:
+            pass
+
         other.x, other.y, other.heading = self.x, self.y, self.heading
         other.velocity = self.velocity
         other.energy = self.energy
