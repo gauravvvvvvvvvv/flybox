@@ -71,6 +71,14 @@ class EnvironmentIn(BaseModel):
     wind_y: float = Field(default=0.0, ge=-0.5, le=0.5)
 
 
+class BatchProbeIn(BaseModel):
+    population: str
+    amount: float = Field(default=0.8, ge=0.0, le=2.0)
+    steps: int = Field(default=50, ge=5, le=250)
+    replicates: int = Field(default=4, ge=1, le=8)
+    seed: int = 64
+
+
 class Command(BaseModel):
     action: str
     payload: dict[str, Any] = Field(default_factory=dict)
