@@ -90,6 +90,7 @@ class World:
         visual: list[dict] = []
         food: list[dict] = []
         sound: list[dict] = []
+        obstacles: list[dict] = []
         for obj in self.objects:
             rel = self.relative(obj, x, y, heading)
             distance = rel["distance"]
@@ -108,7 +109,11 @@ class World:
                 pulse = 0.5 + 0.5 * math.sin(2 * math.pi * max(0.25, obj.amount) * t)
                 rel["drive"] = min(0.8, obj.intensity * pulse / (0.2 + 3.0 * distance))
                 sound.append(rel)
-        return {"visual": visual, "food": food, "sound": sound}
+            elif obj.kind == "obstacle":
+                rel["clearance"] = max(0.0, distance - obj.radius)
+                rel["drive"] = float(max(0.0, 1.0 - rel["clearance"] / 0.24))
+                obstacles.append(rel)
+        return {"visual": visual, "food": food, "sound": sound, "obstacles": obstacles}
 
     def bounce_bounds(
         self,
