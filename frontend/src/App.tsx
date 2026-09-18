@@ -357,6 +357,16 @@ export default function App() {
                 <p className="microcopy">PLAY adds transparent locomotion/foraging assistance. LAB removes it.</p>
               </section>
 
+              {fly?.controller === "play" && (
+                <section className="control-section assist-panel">
+                  <div className="section-label">GAME ASSIST · NOT BIOLOGY</div>
+                  <Signal label="FORAGE STEER" value={Math.abs(fly?.assists?.forage ?? 0)} max={1.1} />
+                  <Signal label="PREDATOR AVOID" value={Math.abs(fly?.assists?.avoid ?? 0)} max={1.8} />
+                  <Signal label="SEARCH WOBBLE" value={Math.abs(fly?.assists?.search ?? 0)} max={0.5} />
+                  <p className="microcopy">These body commands make PLAY fun. Switch to PURE LAB to remove all three.</p>
+                </section>
+              )}
+
               <section className="control-section">
                 <div className="section-label">WHAT IT SENSES</div>
                 <Signal label="FOOD SMELL" value={fly?.senses?.food_odor ?? 0} />
