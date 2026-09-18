@@ -513,6 +513,8 @@ function ChallengePanel({ frame, onStart, onReveal }: any) {
     ["food_run", "🍌 SNACK ATTACK"],
     ["survive", "☠ SURVIVE"],
     ["race", "🏁 RACE"],
+    ["maze", "🧩 MAZE"],
+    ["tournament", "🏆 TOURNAMENT"],
     ["hijack", "⚡ HIJACK"],
     ["mystery", "❓ MYSTERY BRAIN"],
     ["sandbox", "🧪 SANDBOX"],
