@@ -13,6 +13,7 @@ class SensoryEncoder:
         self.last = {
             "food_odor": 0.0,
             "target": 0.0,
+            "obstacle": 0.0,
             "loom": 0.0,
             "threat": 0.0,
             "touch": 0.0,
@@ -77,6 +78,21 @@ class SensoryEncoder:
                 if len(self.visual["target"][side]):
                     inject.append((self.visual["target"][side], target * sensory_gain))
                     display["target"] = max(display["target"], target)
+
+        for item in snapshot.get("obstacles", []):
+            # A nearby frontal solid object is encoded as a small-object/approach
+            # signal using LPLC1. This is an experimental visual encoder, not a
+            # complete collision-avoidance circuit model.
+            if abs(float(item["bearing"])) > 1.55:
+                continue
+            side = self._side(float(item["bearing"]))
+            clearance = float(item.get("clearance", item["distance"]))
+            size = float(item["angular_size"])
+            approach = float(np.clip((0.24 - clearance) / 0.24, 0, 1))
+            small_drive = float(np.clip(approach * 0.65 + size * 0.20, 0, 0.8))
+            if small_drive > 0 and len(self.visual["small"][side]):
+                inject.append((self.visual["small"][side], small_drive * sensory_gain))
+                display["obstacle"] = max(display["obstacle"], small_drive)
 
         self.previous_size = current_sizes
 
