@@ -96,5 +96,18 @@ class InterventionManager:
         self.brain.fired = self.brain.xp.asarray(filtered)
         return filtered
 
+    def restore_all_synapse_lesions(self) -> None:
+        for edge_idx, original in reversed(self._lesions):
+            self.brain.weights[edge_idx] = original
+        if self._lesions and getattr(self.brain, "device", "cpu") == "cuda":
+            from scipy import sparse
+            from cupyx.scipy import sparse as cusparse
+            matrix = sparse.csc_matrix(
+                (self.brain.weights, self.brain.indices, self.brain.indptr),
+                shape=(self.brain.n, self.brain.n),
+            )
+            self.brain._W = cusparse.csr_matrix(matrix.tocsr().astype(np.float32))
+        self._lesions.clear()
+
     def serialized(self) -> list[dict]:
         return [item.to_dict() for item in self.items]
