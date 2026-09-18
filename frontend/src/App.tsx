@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import Arena, { type ArenaTool } from "./Arena";
+import BrainView from "./BrainView";
 import { API, WS, del, post } from "./api";
 import type { Frame, Metadata, WorldKind } from "./types";
 
@@ -360,6 +361,8 @@ export default function App() {
 
           {surface === "LAB" && (
             <>
+              <BrainView fly={fly} />
+
               <div className="metrics">
                 <Metric label="FIRED" value={fly ? fly.fired_count.toLocaleString() : "—"} />
                 <Metric label="NEW" value={fly ? fly.newly_firing.toLocaleString() : "—"} />
