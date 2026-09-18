@@ -1,3 +1,5 @@
+import type { ReactNode } from "react";
+
 type EnterHandler = () => void;
 
 const WORLD_ELEMENTS = [
@@ -71,7 +73,7 @@ const MOTORS = [
   ["BACKWARD", "MDN", "Feeds reverse drive"],
 ] as const;
 
-function DocsCard({ icon, title, children }: { icon?: string; title: string; children: React.ReactNode }) {
+function DocsCard({ icon, title, children }: { icon?: string; title: string; children: ReactNode }) {
   return (
     <article className="home-doc-card">
       <div className="home-doc-card-title">{icon && <span>{icon}</span>}<b>{title}</b></div>
