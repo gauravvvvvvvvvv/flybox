@@ -39,6 +39,7 @@ class SimulationEngine:
         self.challenge_winner: str | None = None
         self.challenge_actions = 0
         self.mystery_secret: dict | None = None
+        self.couplings: list[dict] = []
         self.achievements: set[str] = set()
         self._seen_food: dict[str, int] = {}
         self._seen_escape: dict[str, int] = {}
@@ -84,6 +85,7 @@ class SimulationEngine:
 
     async def step_once(self) -> dict:
         async with self._lock:
+            self._apply_brain_couplings()
             self.world.update(self.dt)
             frames = []
             for fly in self.flies.values():
@@ -181,6 +183,7 @@ class SimulationEngine:
                 {"key": key, "title": ACHIEVEMENTS[key][0], "description": ACHIEVEMENTS[key][1]}
                 for key in sorted(self.achievements)
             ],
+            "couplings": list(self.couplings),
         }
 
     async def reset(self):
@@ -205,6 +208,55 @@ class SimulationEngine:
             self._default_world()
             self._create_primary()
             self.flies["prime"].controller = controller
+
+    def _apply_brain_couplings(self):
+        for link in self.couplings:
+            source_frame = self._last_frames.get(link["source"])
+            target = self.flies.get(link["target"])
+            if source_frame is None or target is None or not target.alive:
+                continue
+            amount = float(np.clip(source_frame.get("dn_activity", 0.0) * link["gain"], 0, 0.8))
+            if amount <= 0:
+                continue
+            try:
+                idx = target.interventions.population(link["population"])
+            except Exception:
+                continue
+            if len(idx):
+                target.interventions.pending_stimulation.append((idx, amount))
+
+    async def connect_brains(self, source: str, target: str, population: str, gain: float):
+        async with self._lock:
+            if source == target:
+                raise ValueError("source and target must be different agents")
+            self._get_fly(source)
+            target_fly = self._get_fly(target)
+            if len(target_fly.interventions.population(population)) == 0:
+                raise ValueError(f"unknown or empty target population: {population}")
+            link = {
+                "source": source,
+                "target": target,
+                "population": population,
+                "gain": float(gain),
+                "kind": "experimental_artificial_coupling",
+            }
+            self.couplings = [
+                item for item in self.couplings
+                if not (item["source"] == source and item["target"] == target)
+            ]
+            self.couplings.append(link)
+            self._event(
+                f'{self.flies[source].name} brain → {self.flies[target].name} {population}',
+                "game",
+                link,
+            )
+            return link
+
+    async def disconnect_brains(self):
+        async with self._lock:
+            count = len(self.couplings)
+            self.couplings.clear()
+            self._event(f"disconnected {count} artificial brain links", "game")
 
     async def add_fly(
         self,
@@ -535,6 +587,7 @@ class SimulationEngine:
                 "trajectory": fly.trajectory,
             } for fly in self.flies.values()],
             "events": list(self.events),
+            "couplings": list(self.couplings),
         }
 
     def share_code(self) -> str:
