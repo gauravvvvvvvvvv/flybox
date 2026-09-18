@@ -43,6 +43,14 @@ export default function App() {
   const audio = useRef<{ ctx: AudioContext; osc: OscillatorNode; gain: GainNode } | null>(null);
 
   useEffect(() => {
+    const hash = window.location.hash;
+    if (hash.startsWith("#box=")) {
+      const code = hash.slice(5);
+      post("/api/share/import", { code }).catch((e) => setError(String(e)));
+    }
+  }, []);
+
+  useEffect(() => {
     fetch(`${API}/api/metadata`)
       .then((r) => r.json())
       .then(setMetadata)
@@ -198,10 +206,17 @@ export default function App() {
     setConsoleText("");
   }
 
-  function shareSeed() {
+  async function shareBox() {
     if (!frame) return;
-    const text = `FLYBOX seed ${frame.world.seed} · challenge ${frame.challenge.id}`;
-    navigator.clipboard?.writeText(text).catch(() => {});
+    try {
+      const response = await fetch(`${API}/api/share`);
+      if (!response.ok) throw new Error(await response.text());
+      const { code } = await response.json();
+      const url = `${window.location.origin}${window.location.pathname}#box=${code}`;
+      await navigator.clipboard?.writeText(url);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    }
   }
 
   if (!entered) {
@@ -411,7 +426,7 @@ export default function App() {
               <section className="control-section">
                 <button className="wide" onClick={() => safe(() => post("/api/world/randomize"))}>🎲 RANDOM WORLD</button>
                 <button className="wide" onClick={() => safe(() => post("/api/world/daily"))}>☀ DAILY SEEDED WORLD</button>
-                <button className="wide" onClick={shareSeed}>COPY WORLD SEED</button>
+                <button className="wide" onClick={shareBox}>COPY SHARE LINK</button>
                 <div className="seed">SEED {frame?.world.seed ?? "—"}</div>
               </section>
             </>
