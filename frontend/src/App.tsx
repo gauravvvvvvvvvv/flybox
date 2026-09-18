@@ -546,7 +546,9 @@ function ChallengePanel({ frame, onStart, onReveal }: any) {
   const items = [
     ["food_run", "🍌 SNACK ATTACK"],
     ["survive", "☠ SURVIVE"],
+    ["hunt", "🖱 YOU vs FLY"],
     ["race", "🏁 RACE"],
+    ["braincar", "🚗 BRAIN CAR"],
     ["maze", "🧩 MAZE"],
     ["tournament", "🏆 TOURNAMENT"],
     ["hijack", "⚡ HIJACK"],
