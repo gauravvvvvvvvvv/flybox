@@ -71,6 +71,14 @@ async def metadata():
     return get_engine().metadata()
 
 
+@app.get("/api/brain/{fly_id}/sample")
+async def brain_sample(fly_id: str):
+    try:
+        return get_engine().brain_view(fly_id)
+    except ValueError as exc:
+        raise HTTPException(404, str(exc)) from exc
+
+
 @app.get("/api/populations/{fly_id}")
 async def populations(fly_id: str):
     try:
