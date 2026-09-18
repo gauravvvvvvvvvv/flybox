@@ -507,6 +507,8 @@ examples/hijack.py
 
 FLYBOX intentionally has **no user accounts and no persistent sandbox storage**.
 
+For the browser app, the live sandbox is owned by a single WebSocket connection. All stateful browser commands travel over that same socket, which keeps one page's commands pinned to the same Vercel Function instance instead of relying on HTTP request affinity.
+
 - Clicking **OPEN THE BOX** creates one temporary server-side simulation for that browser page.
 - A second tab gets a different sandbox.
 - Other visitors never share your world.
