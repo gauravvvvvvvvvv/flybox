@@ -138,6 +138,13 @@ class SimulationEngine:
                     self.challenge_winner = frame["id"]
                     self._complete_challenge(f'{frame["name"]} reached the goal')
                     break
+        elif goal == "first_food":
+            target = int(challenge.get("target", 1))
+            for frame in frames:
+                if frame["food_eaten"] >= target:
+                    self.challenge_winner = frame["id"]
+                    self._complete_challenge(f'{frame["name"]} reached {target} bites')
+                    break
 
     def _complete_challenge(self, reason: str):
         self.challenge_completed = True
@@ -400,6 +407,31 @@ class SimulationEngine:
                 self.world.clear()
                 for x, y in ((.2,.2),(.8,.2),(.2,.8),(.8,.8),(.5,.5)):
                     self.world.add("food", x, y, intensity=1.0, radius=.025, amount=1.0)
+            elif challenge_id == "maze":
+                self.world.clear()
+                self.world.add("food", .90, .50, intensity=1.0, radius=.03, amount=1.0)
+                walls = [
+                    (.30,.25,.035),(.30,.35,.035),(.30,.45,.035),(.30,.55,.035),
+                    (.30,.65,.035),(.52,.35,.035),(.52,.45,.035),(.52,.55,.035),
+                    (.72,.25,.035),(.72,.35,.035),(.72,.65,.035),(.72,.75,.035),
+                ]
+                for x, y, radius in walls:
+                    self.world.add("obstacle", x, y, radius=radius)
+                for i, fly in enumerate(self.flies.values()):
+                    fly.x, fly.y, fly.heading = .08, .44 + i * .04, 0.0
+            elif challenge_id == "tournament":
+                self.world.clear()
+                for x, y in ((.22,.22),(.78,.22),(.22,.78),(.78,.78),(.50,.50)):
+                    self.world.add("food", x, y, intensity=1.0, radius=.025, amount=1.0)
+                while len(self.flies) < min(3, self.max_flies):
+                    index = len(self.flies)
+                    fly_id = f"fly-{uuid.uuid4().hex[:5]}"
+                    body = ["fly", "bot", "car"][index % 3]
+                    fly = FlyAgent(fly_id, f"RIVAL {index}", self.seed + index * 13, .12, .35 + index * .15, controller="play", body_type=body)
+                    self.flies[fly_id] = fly
+                    self._seen_food[fly_id] = 0
+                    self._seen_escape[fly_id] = 0
+                    self._seen_alive[fly_id] = True
             elif challenge_id == "survive":
                 self.world.add("predator", .85, .5, intensity=1.0, radius=.05, vx=-.055, vy=.035, label="PREDATOR")
             elif challenge_id == "mystery":
