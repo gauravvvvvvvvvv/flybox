@@ -1,6 +1,8 @@
-# FLY.LAB
+# FLYBOX
 
 An interactive sandbox for experimenting with a **simplified connectome-based fruit-fly simulation**.
+
+**Live:** https://flyboxlab.vercel.app/
 
 FLY.LAB puts a FlyBrain instance into a small closed-loop world:
 
