@@ -4,12 +4,28 @@ from typing import Any, Literal
 from pydantic import BaseModel, Field
 
 
+WorldKind = Literal[
+    "food",
+    "stimulus",
+    "obstacle",
+    "loom",
+    "sound",
+    "predator",
+    "light",
+    "goal",
+]
+
+
 class WorldObjectIn(BaseModel):
-    kind: Literal["food", "stimulus", "obstacle", "loom"]
+    kind: WorldKind
     x: float = Field(ge=0.0, le=1.0)
     y: float = Field(ge=0.0, le=1.0)
     intensity: float = Field(default=0.8, ge=0.0, le=2.0)
     radius: float = Field(default=0.04, ge=0.005, le=0.25)
+    amount: float = Field(default=1.0, ge=0.0, le=20.0)
+    vx: float = Field(default=0.0, ge=-1.0, le=1.0)
+    vy: float = Field(default=0.0, ge=-1.0, le=1.0)
+    label: str | None = Field(default=None, max_length=40)
 
 
 class InterventionIn(BaseModel):
@@ -23,6 +39,19 @@ class InterventionIn(BaseModel):
     amount: float = 0.8
     fraction: float = Field(default=0.1, ge=0.0, le=0.5)
     seed: int = 64
+
+
+class ManualDriveIn(BaseModel):
+    turn: float = Field(ge=-1.0, le=1.0)
+    throttle: float = Field(ge=-1.0, le=1.0)
+
+
+class RenameIn(BaseModel):
+    name: str = Field(min_length=1, max_length=28)
+
+
+class ConsoleIn(BaseModel):
+    command: str = Field(min_length=1, max_length=200)
 
 
 class Command(BaseModel):
