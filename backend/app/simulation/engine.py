@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import copy
 from collections import deque
 from datetime import date
 import hashlib
@@ -37,6 +38,7 @@ class SimulationEngine:
         self.challenge_winner: str | None = None
         self.challenge_actions = 0
         self.mystery_secret: dict | None = None
+        self.history_experiment: dict | None = None
         self.couplings: list[dict] = []
         self.checkpoints = deque(maxlen=8)
         self.achievements: set[str] = set()
@@ -92,6 +94,7 @@ class SimulationEngine:
             self.t += self.dt
             self._last_frames = {frame["id"]: frame for frame in frames}
             self._evaluate_events(frames)
+            self._advance_history_experiment(frames)
             self._evaluate_challenge(frames)
             return self.frame_payload()
 
@@ -146,6 +149,78 @@ class SimulationEngine:
                     self.challenge_winner = frame["id"]
                     self._complete_challenge(f'{frame["name"]} reached {target} bites')
                     break
+        elif goal == "history":
+            # Completion is controlled by _advance_history_experiment so the
+            # result is based only on the neutral TEST phase.
+            return
+
+    def _advance_history_experiment(self, frames: list[dict]):
+        exp = self.history_experiment
+        if self.challenge_id != "history" or not exp or self.challenge_completed:
+            return
+
+        phase = exp["phase"]
+        if phase == "exposure" and self.t >= exp["exposure_ends"]:
+            self.world.clear()
+            for fly_id in (exp["a"], exp["b"]):
+                fly = self.flies.get(fly_id)
+                if fly is None:
+                    continue
+                fly.x = 0.24
+                fly.y = 0.50
+                fly.heading = 0.0
+                fly.velocity = 0.0
+                fly.state = "HISTORY TEST"
+                fly.set_body(exp["body_type"])
+                fly.set_controller(exp["controller"])
+                fly.trajectory = []
+
+            exp["phase"] = "test"
+            exp["test_started"] = self.t
+            exp["test_ends"] = self.t + exp["test_duration"]
+            self._event(
+                "RECENT HISTORY: exposure cues removed; identical neutral test started",
+                "challenge",
+                {"kind": "history_test"},
+            )
+            return
+
+        if phase != "test":
+            return
+
+        by_id = {frame["id"]: frame for frame in frames}
+        a = by_id.get(exp["a"])
+        b = by_id.get(exp["b"])
+        if a is None or b is None:
+            return
+
+        neural = jaccard_distance(
+            self.flies[exp["a"]].previous_fired,
+            self.flies[exp["b"]].previous_fired,
+        )
+        spatial = float(np.hypot(a["x"] - b["x"], a["y"] - b["y"]))
+        exp["samples"] += 1
+        exp["neural_sum"] += neural
+        exp["neural_max"] = max(exp["neural_max"], neural)
+        exp["spatial_max"] = max(exp["spatial_max"], spatial)
+        exp["neural_now"] = neural
+        exp["spatial_now"] = spatial
+
+        if self.t >= exp["test_ends"]:
+            samples = max(1, int(exp["samples"]))
+            exp["phase"] = "complete"
+            exp["result"] = {
+                "mean_neural_divergence": exp["neural_sum"] / samples,
+                "max_neural_divergence": exp["neural_max"],
+                "max_behavioral_divergence": exp["spatial_max"],
+                "samples": samples,
+                "interpretation": (
+                    "Different recent sensory histories produced different continuing neural states "
+                    "during the same neutral test. This is short-term state/history dependence, "
+                    "not a claim of learned biological memory."
+                ),
+            }
+            self._complete_challenge("recent-history comparison finished")
 
     def _complete_challenge(self, reason: str):
         self.challenge_completed = True
@@ -179,6 +254,7 @@ class SimulationEngine:
             "winner": self.challenge_winner,
             "actions": self.challenge_actions,
             "secret_hidden": self.mystery_secret is not None and not self.challenge_completed,
+            "history": copy.deepcopy(self.history_experiment) if self.challenge_id == "history" else None,
         }
 
     def frame_payload(self) -> dict:
@@ -223,6 +299,7 @@ class SimulationEngine:
             self.challenge_winner = None
             self.challenge_actions = 0
             self.mystery_secret = None
+            self.history_experiment = None
             self.couplings.clear()
             self.checkpoints.clear()
             self._default_world()
@@ -299,7 +376,8 @@ class SimulationEngine:
                 "challenge_completed": self.challenge_completed,
                 "challenge_winner": self.challenge_winner,
                 "challenge_actions": self.challenge_actions,
-                "mystery_secret": self.mystery_secret,
+                "mystery_secret": copy.deepcopy(self.mystery_secret),
+                "history_experiment": copy.deepcopy(self.history_experiment),
                 "achievements": set(self.achievements),
                 "couplings": [dict(item) for item in self.couplings],
                 "events": list(self.events),
@@ -369,6 +447,7 @@ class SimulationEngine:
             self.challenge_winner = checkpoint["challenge_winner"]
             self.challenge_actions = int(checkpoint["challenge_actions"])
             self.mystery_secret = checkpoint["mystery_secret"]
+            self.history_experiment = copy.deepcopy(checkpoint.get("history_experiment"))
             self.achievements = set(checkpoint["achievements"])
             self.couplings = [dict(item) for item in checkpoint["couplings"]]
             self.events = deque(checkpoint["events"], maxlen=1600)
@@ -594,6 +673,7 @@ class SimulationEngine:
             self.challenge_winner = None
             self.challenge_actions = 0
             self.mystery_secret = None
+            self.history_experiment = None
             for fly in self.flies.values():
                 fly.food_eaten = 0
                 fly.escape_events = 0
@@ -679,6 +759,85 @@ class SimulationEngine:
                 mystery = next(f for f in self.flies.values() if not f.is_prime)
                 mystery.interventions.apply({"type": "silence_population", "target": target}, self.t)
                 self.mystery_secret = {"fly_id": mystery.id, "type": "silence_population", "target": target}
+            elif challenge_id == "history":
+                # Keep this experiment conservative: no plasticity and no invented
+                # memory variable. Start from an exact CPU/mock fork, expose the
+                # two neural states to different recent sensory histories while
+                # their bodies are stationary, then compare them in the exact
+                # same cue-free world.
+                for fly_id in list(self.flies):
+                    if fly_id != "prime":
+                        del self.flies[fly_id]
+                        self._last_frames.pop(fly_id, None)
+                        self._seen_food.pop(fly_id, None)
+                        self._seen_escape.pop(fly_id, None)
+                        self._seen_alive.pop(fly_id, None)
+
+                source = self.flies["prime"]
+                original_body = source.body_type
+                original_controller = source.controller
+                fork_id = f"history-{uuid.uuid4().hex[:5]}"
+                fork = FlyAgent(
+                    fork_id,
+                    "HISTORY B",
+                    source.seed,
+                    source.x,
+                    source.y,
+                    controller=source.controller,
+                    body_type=source.body_type,
+                )
+                if not source.copy_runtime_state_to(fork):
+                    raise ValueError(
+                        "RECENT HISTORY requires an exact CPU/mock neural-state fork; "
+                        "exact CUDA fork is not claimed."
+                    )
+
+                self.flies[fork_id] = fork
+                self._seen_food[fork_id] = fork.food_eaten
+                self._seen_escape[fork_id] = fork.escape_events
+                self._seen_alive[fork_id] = fork.alive
+
+                source.set_body("synth")
+                fork.set_body("synth")
+                source.x, source.y, source.heading = .15, .20, 0.0
+                fork.x, fork.y, fork.heading = .15, .80, 0.0
+                source.velocity = 0.0
+                fork.velocity = 0.0
+                source.trajectory = []
+                fork.trajectory = []
+
+                self.world.clear()
+                self.world.add("food", .23, .20, intensity=1.0, radius=.026, amount=1.0, label="FOOD HISTORY")
+                self.world.add("loom", .23, .80, intensity=1.0, radius=.038, label="THREAT HISTORY")
+
+                exposure_duration = 3.0
+                test_duration = 8.0
+                self.history_experiment = {
+                    "phase": "exposure",
+                    "a": source.id,
+                    "b": fork.id,
+                    "a_history": "food/odor",
+                    "b_history": "loom/threat",
+                    "exposure_started": self.t,
+                    "exposure_ends": self.t + exposure_duration,
+                    "exposure_duration": exposure_duration,
+                    "test_duration": test_duration,
+                    "body_type": original_body,
+                    "controller": original_controller,
+                    "samples": 0,
+                    "neural_sum": 0.0,
+                    "neural_max": 0.0,
+                    "spatial_max": 0.0,
+                    "neural_now": 0.0,
+                    "spatial_now": 0.0,
+                    "result": None,
+                    "claim": "recent neural history/state dependence; not learned biological memory",
+                }
+                self._event(
+                    "RECENT HISTORY: exact fork created; A gets food/odor history, B gets loom/threat history",
+                    "challenge",
+                    {"kind": "history_exposure", "a": source.id, "b": fork.id},
+                )
 
             self._event(f'challenge started: {CHALLENGES[challenge_id]["name"]}', "challenge")
 
