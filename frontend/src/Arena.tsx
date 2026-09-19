@@ -56,8 +56,10 @@ export default function Arena({
     // Camera: zoom around the selected fly so it remains easy to follow.
     // At 1× the whole normalized arena is visible. Higher zoom levels follow
     // the selected fly without making the page itself larger.
-    const cameraX = cameraCenter.x * w;
-    const cameraY = cameraCenter.y * h;
+    const activeCameraX = zoom <= 1 ? 0.5 : cameraCenter.x;
+    const activeCameraY = zoom <= 1 ? 0.5 : cameraCenter.y;
+    const cameraX = activeCameraX * w;
+    const cameraY = activeCameraY * h;
     ctx.save();
     ctx.translate(w / 2, h / 2);
     ctx.scale(zoom, zoom);
@@ -147,8 +149,10 @@ export default function Arena({
   function screenToWorld(clientX: number, clientY: number, rect: DOMRect) {
     const sx = clientX - rect.left;
     const sy = clientY - rect.top;
-    const cameraX = cameraCenter.x * rect.width;
-    const cameraY = cameraCenter.y * rect.height;
+    const activeCameraX = zoom <= 1 ? 0.5 : cameraCenter.x;
+    const activeCameraY = zoom <= 1 ? 0.5 : cameraCenter.y;
+    const cameraX = activeCameraX * rect.width;
+    const cameraY = activeCameraY * rect.height;
 
     const worldPxX = cameraX + (sx - rect.width / 2) / zoom;
     const worldPxY = cameraY + (sy - rect.height / 2) / zoom;
@@ -160,8 +164,10 @@ export default function Arena({
   }
 
   function worldToScreen(x: number, y: number, rect: DOMRect) {
-    const cameraX = cameraCenter.x * rect.width;
-    const cameraY = cameraCenter.y * rect.height;
+    const activeCameraX = zoom <= 1 ? 0.5 : cameraCenter.x;
+    const activeCameraY = zoom <= 1 ? 0.5 : cameraCenter.y;
+    const cameraX = activeCameraX * rect.width;
+    const cameraY = activeCameraY * rect.height;
     return {
       x: rect.width / 2 + (x * rect.width - cameraX) * zoom,
       y: rect.height / 2 + (y * rect.height - cameraY) * zoom,
