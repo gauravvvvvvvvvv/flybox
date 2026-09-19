@@ -3,5 +3,5 @@ uvicorn[standard]==0.35.0
 numpy>=1.26
 pydantic>=2.8
 flybrain==0.1.0
-pytest>=8.3
+pytest>=9.1.1
 httpx>=0.28
