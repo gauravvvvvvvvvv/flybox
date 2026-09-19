@@ -39,8 +39,8 @@ export default function BrainView({ fly }: { fly: FlyFrame | undefined }) {
     const motor = fly?.motor ?? {};
     const sensoryEntries = Object.entries(senses);
     const motorEntries = Object.entries(motor);
-    const sensoryPeak = sensoryEntries.sort((a, b) => b[1] - a[1])[0] ?? ["none", 0];
-    const motorPeak = motorEntries.sort((a, b) => b[1] - a[1])[0] ?? ["none", 0];
+    const sensoryPeak: [string, number] = sensoryEntries.sort((a, b) => b[1] - a[1])[0] ?? ["none", 0];
+    const motorPeak: [string, number] = motorEntries.sort((a, b) => b[1] - a[1])[0] ?? ["none", 0];
     return {
       sensory: sensoryPeak[1],
       sensoryName: sensoryPeak[0],
