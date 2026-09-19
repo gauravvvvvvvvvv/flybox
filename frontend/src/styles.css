@@ -35,12 +35,16 @@ header { height: 55px; border-bottom: 1px solid #222925; display: flex; align-it
 .header-stat { margin-left: auto; }
 .mock { color: #ffbf61; border: 1px solid #6d4d1e; padding: 5px 7px; }
 .error-banner { padding: 10px 18px; color: #ffc1b6; background: #381916; border-bottom: 1px solid #63312b; font: 12px ui-monospace, monospace; }
-.workspace { display: grid; grid-template-columns: minmax(0, 1fr) 360px; min-height: 65vh; }
-.arena-pane { border-right: 1px solid #222925; display: grid; grid-template-rows: auto 1fr auto; min-width: 0; }
+.workspace { display: grid; grid-template-columns: minmax(0, 1fr) 360px; height: clamp(560px, calc(100vh - 74px), 760px); min-height: 0; }
+.arena-pane { border-right: 1px solid #222925; display: grid; grid-template-rows: auto minmax(0, 1fr) auto; min-width: 0; min-height: 0; overflow: hidden; }
 .toolbar, .sim-controls { display: flex; gap: 6px; padding: 9px; border-bottom: 1px solid #202722; overflow-x: auto; }
 .sim-controls { border-top: 1px solid #202722; border-bottom: 0; }
-.arena { width: 100%; height: 100%; min-height: 480px; display: block; cursor: crosshair; }
-aside { padding: 18px; background: #0b0e0c; }
+.arena-viewport { position: relative; min-height: 0; height: 100%; overflow: hidden; background: #080b09; }
+.arena { width: 100%; height: 100%; min-height: 0; display: block; cursor: crosshair; }
+.arena-zoom { position: absolute; right: 12px; bottom: 12px; display: flex; align-items: center; gap: 5px; padding: 5px; background: rgba(6,9,7,.86); border: 1px solid #2b342e; backdrop-filter: blur(8px); z-index: 5; }
+.arena-zoom button { min-width: 32px; height: 30px; padding: 0 9px; }
+.arena-zoom span { min-width: 42px; text-align: center; color: #c8d3cb; font: 10px ui-monospace, monospace; }
+aside { padding: 18px; background: #0b0e0c; overflow-y: auto; min-height: 0; }
 .panel-title-row { display: flex; justify-content: space-between; align-items: center; }
 .panel-title-row h2 { margin: 4px 0 0; font-size: 31px; }
 .metrics { display: grid; grid-template-columns: repeat(2, 1fr); border: 1px solid #222925; margin-top: 16px; }
@@ -138,9 +142,9 @@ aside { padding: 18px; background: #0b0e0c; }
 
 .cinema-exit { display:none; position:absolute; z-index:8; right:14px; top:14px; border-color:#536242; background:rgba(9,12,10,.78); }
 .cinematic header, .cinematic aside, .cinematic .timeline, .cinematic .toolbar, .cinematic .sim-controls { display:none; }
-.cinematic .workspace { display:block; min-height:100vh; }
-.cinematic .arena-pane { border:0; display:block; position:relative; min-height:100vh; }
-.cinematic .arena { min-height:100vh; height:100vh; }
+.cinematic .workspace { display:block; height:100vh; min-height:100vh; }
+.cinematic .arena-pane { border:0; display:block; position:relative; height:100vh; min-height:100vh; }
+.cinematic .arena-viewport, .cinematic .arena { min-height:100vh; height:100vh; }
 .cinematic .cinema-exit { display:block; }
 
 .brain-view { margin-top:14px; border:1px solid #222b25; background:#080b09; }
@@ -766,4 +770,21 @@ aside { padding: 18px; background: #0b0e0c; }
   .techdocs-version { margin:0; }
   .techdocs-article { padding:38px 20px 70px; }
   .techdocs-pager { grid-template-columns:1fr; }
+}
+
+
+@media (max-height: 760px) and (min-width: 901px) {
+  .workspace { height: calc(100vh - 58px); min-height: 500px; }
+  .toolbar, .sim-controls { padding: 6px 8px; }
+  aside { padding: 12px 16px; }
+}
+
+@media (max-width: 900px) {
+  .workspace { height: auto; min-height: 0; }
+  .arena-viewport { height: clamp(380px, 58vh, 560px); }
+}
+
+@media (max-width: 600px) {
+  .arena-viewport { height: 420px; }
+  .arena-zoom { right: 8px; bottom: 8px; }
 }
