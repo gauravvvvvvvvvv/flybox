@@ -12,8 +12,8 @@ This checklist is for a public open-source release.
 - [x] Pull request template
 - [x] Bug and feature issue templates
 - [x] Dependabot configuration
-- [x] CI for backend tests and frontend typecheck/build
-- [ ] Protect `main` and require passing CI before merge
+- [ ] GitHub Actions CI temporarily disabled while the account billing dispute is unresolved; run backend/frontend validation locally before merges
+- [ ] Protect `main` without requiring GitHub Actions until the billing dispute is resolved
 - [ ] Enable GitHub private vulnerability reporting
 - [ ] Add repository topics/description/homepage in GitHub settings
 
@@ -32,8 +32,8 @@ This checklist is for a public open-source release.
 
 ## Validation
 
-- [ ] Green backend CI on launch commit
-- [ ] Green frontend CI on launch commit
+- [ ] Run backend tests locally on the launch commit
+- [ ] Run frontend typecheck/build locally on the launch commit
 - [ ] Run at least one smoke test using real FlyBrain
 - [ ] Confirm 3D brain view receives real xyz soma coordinates
 - [ ] Confirm PLAY/PURE LAB labels remain visible and accurate
