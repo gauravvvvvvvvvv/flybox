@@ -111,23 +111,24 @@ class FlyAgent:
         if ids.size == 0:
             return
 
-        # Same anatomical projection used by FlyBrain's own dashboard:
-        # EM x = left/right; z = long brain->nerve-cord axis.
-        xy = positions[ok][:, [0, 2]].astype(np.float32, copy=True)
+        # Preserve all three real MaleCNS EM soma coordinates.  Earlier UI
+        # versions discarded the middle axis and invented display depth; this
+        # normalization keeps x/y/z anatomical geometry intact.
+        xyz = positions[ok][:, :3].astype(np.float32, copy=True)
         side = np.asarray(getattr(self.brain, "side", np.array([""] * self.brain.n)))[ok]
         left = side == "L"
         right = side == "R"
-        if left.any() and right.any() and np.nanmean(xy[right, 0]) < np.nanmean(xy[left, 0]):
-            xy[:, 0] *= -1
+        if left.any() and right.any() and np.nanmean(xyz[right, 0]) < np.nanmean(xyz[left, 0]):
+            xyz[:, 0] *= -1
 
-        lo = np.percentile(xy, 0.2, axis=0)
-        hi = np.percentile(xy, 99.8, axis=0)
+        lo = np.percentile(xyz, 0.2, axis=0)
+        hi = np.percentile(xyz, 99.8, axis=0)
         span = hi - lo
         scale = float(max(span.max(), 1e-6))
         pad = (scale - span) / 2.0
-        norm = np.clip((xy - lo + pad) / scale, 0, 1)
+        norm = np.clip((xyz - lo + pad) / scale, 0, 1)
 
-        full = np.full((self.brain.n, 2), np.nan, dtype=np.float32)
+        full = np.full((self.brain.n, 3), np.nan, dtype=np.float32)
         full[ids] = norm
         self._brain_norm = full
         self._brain_mapped = int(ids.size)
@@ -138,14 +139,14 @@ class FlyAgent:
         chosen = ids[pick]
         coords = full[chosen]
         self._brain_static_points = [
-            [int(neuron_id), round(float(pos[0]), 4), round(float(pos[1]), 4)]
+            [int(neuron_id), round(float(pos[0]), 4), round(float(pos[1]), 4), round(float(pos[2]), 4)]
             for neuron_id, pos in zip(chosen, coords)
         ]
 
     def brain_view_static(self) -> dict:
         return {
             "kind": self._brain_view_kind,
-            "projection": "MaleCNS soma positions projected on EM x/z axes" if self._brain_view_kind == "anatomical" else None,
+            "projection": "MaleCNS soma positions in normalized EM x/y/z coordinates" if self._brain_view_kind == "anatomical" else None,
             "mapped": self._brain_mapped,
             "neurons": int(self.brain.n),
             "points": self._brain_static_points,
@@ -164,7 +165,7 @@ class FlyAgent:
             fired = fired[pick]
             coords = coords[pick]
         return [
-            [int(neuron_id), round(float(pos[0]), 4), round(float(pos[1]), 4)]
+            [int(neuron_id), round(float(pos[0]), 4), round(float(pos[1]), 4), round(float(pos[2]), 4)]
             for neuron_id, pos in zip(fired, coords)
         ]
 
