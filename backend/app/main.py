@@ -676,9 +676,11 @@ static_dir = os.getenv("FLYLAB_STATIC_DIR")
 if static_dir and os.path.isdir(static_dir):
     @app.get("/docs", include_in_schema=False)
     @app.get("/docs/", include_in_schema=False)
+    @app.get("/docs/{doc_path:path}", include_in_schema=False)
     @app.get("/help", include_in_schema=False)
     @app.get("/help/", include_in_schema=False)
-    async def docs_page():
+    @app.get("/help/{doc_path:path}", include_in_schema=False)
+    async def docs_page(doc_path: str = ""):
         return FileResponse(os.path.join(static_dir, "index.html"))
 
     app.mount("/", StaticFiles(directory=static_dir, html=True), name="frontend")
