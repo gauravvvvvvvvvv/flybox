@@ -96,6 +96,7 @@ export default function HomeDocs({ onEnter }: { onEnter: EnterHandler }) {
           <a href="#behavior">BEHAVIOR</a>
           <a href="#modes">MODES</a>
           <a href="#science">SCIENCE</a>
+          <a href="/docs">DEEP DOCS ↗</a>
         </div>
         <button className="home-enter-mini" onClick={onEnter}>OPEN SANDBOX</button>
       </nav>
@@ -110,7 +111,8 @@ export default function HomeDocs({ onEnter }: { onEnter: EnterHandler }) {
         </p>
         <div className="home-hero-actions">
           <button className="enter" onClick={onEnter}>OPEN THE SANDBOX</button>
-          <a className="home-secondary" href="#controls">READ THE MANUAL ↓</a>
+          <a className="home-secondary" href="#controls">QUICK OVERVIEW ↓</a>
+          <a className="home-secondary" href="/docs">FULL TECHNICAL DOCS ↗</a>
         </div>
         <div className="home-stat-row">
           <div><strong>166,700</strong><span>NEURONS</span></div>
