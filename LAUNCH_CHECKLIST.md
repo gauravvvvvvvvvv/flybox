@@ -45,12 +45,12 @@ This checklist is for a public open-source release.
 - [x] Third-party MaleCNS attribution separated from software license
 - [x] Experimental encoders/decoders documented
 - [x] Claims exclude consciousness/cognition/complete biological equivalence
-- [ ] Add a formal CITATION.cff once the preferred project author/citation string is finalized
+- [x] Add CITATION.cff (currently credits the FLYBOX contributors collectively; individual author metadata can be expanded later)
 - [ ] Pin a release tag (for example `v0.2.0`) after CI and production smoke tests pass
 
 ## Community
 
 - [x] Contribution pathways documented
 - [x] Scientific contribution standard documented
-- [ ] Create a few beginner-friendly `good first issue` tickets
-- [ ] Create `help wanted` issues for morphology, protocol builder, population explorer, and recorder work
+- [x] Create a beginner-friendly `good first issue` ticket
+- [x] Create contributor issues for morphology, protocol builder, population explorer, and recorder work
