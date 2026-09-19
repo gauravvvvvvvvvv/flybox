@@ -197,3 +197,57 @@ def test_obstacle_drives_lplc1_encoder_before_touch():
     inject, _, senses = enc.encode(snapshot, 1.0, 1.0, None)
     assert senses["obstacle"] > 0
     assert inject
+
+
+def test_recent_history_challenge_uses_exact_fork_and_neutral_test():
+    async def run():
+        sim = SimulationEngine(seed=31)
+        await sim.start_challenge("history")
+
+        state = sim.challenge_state()
+        assert state["id"] == "history"
+        assert state["history"]["phase"] == "exposure"
+        assert len(sim.flies) == 2
+        assert {obj.kind for obj in sim.world.objects} == {"food", "loom"}
+
+        a_id = state["history"]["a"]
+        b_id = state["history"]["b"]
+        a = sim.flies[a_id]
+        b = sim.flies[b_id]
+
+        # The challenge begins from an exact fork before the histories diverge.
+        assert np.array_equal(a.previous_fired, b.previous_fired)
+        assert a.body_type == "synth"
+        assert b.body_type == "synth"
+
+        # Run a few real neural steps under the different exposure cues.
+        for _ in range(8):
+            await sim.step_once()
+
+        # Advance to the neutral test transition without requiring a long test.
+        sim.t = sim.history_experiment["exposure_ends"]
+        await sim.step_once()
+        state = sim.challenge_state()
+        assert state["history"]["phase"] == "test"
+        assert sim.world.objects == []
+        assert sim.flies[a_id].x == sim.flies[b_id].x
+        assert sim.flies[a_id].y == sim.flies[b_id].y
+        assert sim.flies[a_id].heading == sim.flies[b_id].heading
+        assert sim.flies[a_id].body_type == sim.flies[b_id].body_type
+
+        # Let the same cue-free world run, then finish and verify a measured result.
+        for _ in range(5):
+            await sim.step_once()
+        sim.t = sim.history_experiment["test_ends"]
+        await sim.step_once()
+
+        state = sim.challenge_state()
+        assert state["completed"] is True
+        assert state["history"]["phase"] == "complete"
+        result = state["history"]["result"]
+        assert result["samples"] > 0
+        assert result["mean_neural_divergence"] >= 0
+        assert result["max_behavioral_divergence"] >= 0
+        assert "not a claim of learned biological memory" in result["interpretation"]
+
+    asyncio.run(run())
