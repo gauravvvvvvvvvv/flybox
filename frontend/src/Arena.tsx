@@ -1,4 +1,4 @@
-import { useEffect, useRef } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import type { Frame, WorldKind } from "./types";
 
 export type ArenaTool = "inspect" | WorldKind;
@@ -30,6 +30,12 @@ export default function Arena({
   const dragObject = useRef<string | null>(null);
   const dragFly = useRef<string | null>(null);
   const lastPaint = useRef(0);
+  const [zoom, setZoom] = useState(1);
+
+  const cameraCenter = useMemo(() => {
+    const selected = frame?.flies.find((fly) => fly.id === selectedFly);
+    return selected ? { x: selected.x, y: selected.y } : { x: 0.5, y: 0.5 };
+  }, [frame, selectedFly]);
 
   useEffect(() => {
     const canvas = ref.current;
@@ -46,6 +52,17 @@ export default function Arena({
     const w = rect.width;
     const h = rect.height;
     ctx.clearRect(0, 0, w, h);
+
+    // Camera: zoom around the selected fly so it remains easy to follow.
+    // At 1× the whole normalized arena is visible. Higher zoom levels follow
+    // the selected fly without making the page itself larger.
+    const cameraX = cameraCenter.x * w;
+    const cameraY = cameraCenter.y * h;
+    ctx.save();
+    ctx.translate(w / 2, h / 2);
+    ctx.scale(zoom, zoom);
+    ctx.translate(-cameraX, -cameraY);
+
     const daylight = frame.world.daylight ?? 1;
     const shade = Math.round(8 + daylight * 10);
     ctx.fillStyle = `rgb(${shade - 1},${shade + 2},${shade})`;
@@ -107,6 +124,8 @@ export default function Arena({
       ctx.fillText(fly.state, x + 13, y + 3);
     }
 
+    ctx.restore();
+
     if (frame.challenge.id !== "sandbox") {
       ctx.fillStyle = "rgba(7,9,8,.80)";
       ctx.fillRect(12, 12, Math.min(360, w - 24), 56);
@@ -123,14 +142,35 @@ export default function Arena({
         52,
       );
     }
-  }, [frame, selectedFly, neuralOverlay]);
+  }, [frame, selectedFly, neuralOverlay, zoom, cameraCenter]);
+
+  function screenToWorld(clientX: number, clientY: number, rect: DOMRect) {
+    const sx = clientX - rect.left;
+    const sy = clientY - rect.top;
+    const cameraX = cameraCenter.x * rect.width;
+    const cameraY = cameraCenter.y * rect.height;
+
+    const worldPxX = cameraX + (sx - rect.width / 2) / zoom;
+    const worldPxY = cameraY + (sy - rect.height / 2) / zoom;
+
+    return {
+      x: Math.max(0, Math.min(1, worldPxX / rect.width)),
+      y: Math.max(0, Math.min(1, worldPxY / rect.height)),
+    };
+  }
+
+  function worldToScreen(x: number, y: number, rect: DOMRect) {
+    const cameraX = cameraCenter.x * rect.width;
+    const cameraY = cameraCenter.y * rect.height;
+    return {
+      x: rect.width / 2 + (x * rect.width - cameraX) * zoom,
+      y: rect.height / 2 + (y * rect.height - cameraY) * zoom,
+    };
+  }
 
   function point(ev: React.PointerEvent<HTMLCanvasElement>) {
     const rect = ev.currentTarget.getBoundingClientRect();
-    return {
-      x: Math.max(0, Math.min(1, (ev.clientX - rect.left) / rect.width)),
-      y: Math.max(0, Math.min(1, (ev.clientY - rect.top) / rect.height)),
-    };
+    return screenToWorld(ev.clientX, ev.clientY, rect);
   }
 
   function onContextMenu(ev: React.MouseEvent<HTMLCanvasElement>) {
@@ -141,15 +181,16 @@ export default function Arena({
     const rect = ev.currentTarget.getBoundingClientRect();
     const mouseX = ev.clientX - rect.left;
     const mouseY = ev.clientY - rect.top;
-    const arenaScale = Math.min(rect.width, rect.height);
+    const arenaScale = Math.min(rect.width, rect.height) * zoom;
 
     // Hit-test against the same size the canvas actually renders. The extra
     // padding makes small items such as sound/light/odor easy to remove while
     // still choosing the nearest object when elements overlap.
     let hit: { id: string; distancePx: number } | null = null;
     for (const obj of frame.world.objects) {
-      const objectX = obj.x * rect.width;
-      const objectY = obj.y * rect.height;
+      const screen = worldToScreen(obj.x, obj.y, rect);
+      const objectX = screen.x;
+      const objectY = screen.y;
       const distancePx = Math.hypot(objectX - mouseX, objectY - mouseY);
       const renderedRadiusPx = Math.max(5, obj.radius * arenaScale);
       const hitRadiusPx = Math.max(14, renderedRadiusPx + 10);
@@ -230,15 +271,39 @@ export default function Arena({
   }
 
   return (
-    <canvas
-      ref={ref}
-      className="arena"
-      onPointerDown={onPointerDown}
-      onPointerMove={onPointerMove}
-      onPointerUp={onPointerUp}
-      onPointerCancel={onPointerUp}
-      onContextMenu={onContextMenu}
-    />
+    <div className="arena-viewport">
+      <canvas
+        ref={ref}
+        className="arena"
+        onPointerDown={onPointerDown}
+        onPointerMove={onPointerMove}
+        onPointerUp={onPointerUp}
+        onPointerCancel={onPointerUp}
+        onContextMenu={onContextMenu}
+      />
+      <div className="arena-zoom" aria-label="Arena zoom controls">
+        <button
+          type="button"
+          title="Zoom out"
+          onClick={() => setZoom((value) => Math.max(1, Number((value - 0.5).toFixed(1))))}
+          disabled={zoom <= 1}
+        >
+          −
+        </button>
+        <span>{zoom.toFixed(1)}×</span>
+        <button
+          type="button"
+          title="Zoom in"
+          onClick={() => setZoom((value) => Math.min(4, Number((value + 0.5).toFixed(1))))}
+          disabled={zoom >= 4}
+        >
+          +
+        </button>
+        <button type="button" title="Reset zoom" onClick={() => setZoom(1)}>
+          FIT
+        </button>
+      </div>
+    </div>
   );
 }
 
