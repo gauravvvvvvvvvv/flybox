@@ -58,6 +58,11 @@ CHALLENGES = {
         "description": "One non-primary agent can receive a hidden reproducible intervention.",
         "goal": "mystery",
     },
+    "history": {
+        "name": "Recent History",
+        "description": "Give two identical brain states different recent sensory histories, then compare them in the same neutral world.",
+        "goal": "history",
+    },
 }
 
 ACHIEVEMENTS = {
