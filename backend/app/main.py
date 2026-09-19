@@ -88,7 +88,7 @@ async def lifespan(app: FastAPI):
         _destroy_session(session_id)
 
 
-app = FastAPI(title="FLYBOX API", version="0.2.0", lifespan=lifespan)
+app = FastAPI(\n    title="FLYBOX API",\n    version="0.2.0",\n    lifespan=lifespan,\n    docs_url="/api/docs",\n    redoc_url="/api/redoc",\n    openapi_url="/api/openapi.json",\n)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=os.getenv("FLYLAB_ORIGINS", "http://localhost:5173").split(","),
