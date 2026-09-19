@@ -654,6 +654,7 @@ function ChallengePanel({ frame, onStart, onReveal }: any) {
     ["tournament", "🏆 TOURNAMENT"],
     ["hijack", "⚡ HIJACK"],
     ["mystery", "❓ MYSTERY BRAIN"],
+    ["history", "🧠 RECENT HISTORY"],
     ["sandbox", "🧪 SANDBOX"],
   ];
   return (
@@ -664,8 +665,68 @@ function ChallengePanel({ frame, onStart, onReveal }: any) {
       </div>
       {frame?.challenge.id === "hijack" && <p className="microcopy">STIM BUDGET: {frame.challenge.actions}/{frame.challenge.budget}</p>}
       {frame?.challenge.id === "mystery" && frame.challenge.secret_hidden && <button className="wide" onClick={onReveal}>REVEAL SECRET</button>}
+      {frame?.challenge.id === "history" && frame.challenge.history && (
+        <HistoryChallenge frame={frame} />
+      )}
       {frame?.challenge.completed && <div className="challenge-win">CHALLENGE COMPLETE</div>}
     </section>
+  );
+}
+
+function HistoryChallenge({ frame }: { frame: Frame }) {
+  const history = frame.challenge.history;
+  if (!history) return null;
+
+  const exposureProgress = history.phase === "exposure"
+    ? Math.max(0, Math.min(1, (frame.t - history.exposure_started) / history.exposure_duration))
+    : 1;
+  const testProgress = history.phase === "test" && history.test_started != null
+    ? Math.max(0, Math.min(1, (frame.t - history.test_started) / history.test_duration))
+    : history.phase === "complete" ? 1 : 0;
+
+  return (
+    <div className="history-card">
+      <div className="history-title">
+        <span>RECENT HISTORY EXPERIMENT</span>
+        <b>{history.phase.toUpperCase()}</b>
+      </div>
+
+      <div className="history-pair">
+        <div><strong>A</strong><span>FOOD / ODOR HISTORY</span></div>
+        <div><strong>B</strong><span>LOOM / THREAT HISTORY</span></div>
+      </div>
+
+      <div className="history-stage">
+        <span>1 · EXPOSURE</span>
+        <i><em style={{ width: `${exposureProgress * 100}%` }} /></i>
+      </div>
+      <div className="history-stage">
+        <span>2 · SAME CUE-FREE TEST</span>
+        <i><em style={{ width: `${testProgress * 100}%` }} /></i>
+      </div>
+
+      {history.phase !== "exposure" && (
+        <div className="history-metrics">
+          <div><span>NEURAL Δ NOW</span><b>{history.neural_now.toFixed(3)}</b></div>
+          <div><span>SPACE Δ NOW</span><b>{history.spatial_now.toFixed(3)}</b></div>
+          <div><span>MAX NEURAL Δ</span><b>{history.neural_max.toFixed(3)}</b></div>
+          <div><span>MAX SPACE Δ</span><b>{history.spatial_max.toFixed(3)}</b></div>
+        </div>
+      )}
+
+      {history.result && (
+        <div className="history-result">
+          <b>SAME WORLD · DIFFERENT RECENT PAST</b>
+          <span>Mean neural divergence: {history.result.mean_neural_divergence.toFixed(3)}</span>
+          <span>Max behavioral separation: {history.result.max_behavioral_divergence.toFixed(3)}</span>
+        </div>
+      )}
+
+      <p className="microcopy">
+        This tests whether different recent sensory histories leave different continuing neural states.
+        It does <b>not</b> claim associative learning, long-term memory, or biological recall.
+      </p>
+    </div>
   );
 }
 
