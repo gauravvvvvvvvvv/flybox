@@ -1,39 +1,187 @@
 # FLYBOX
 
-An interactive sandbox for experimenting with a **simplified connectome-based fruit-fly simulation**.
+**An open-source connectome sandbox for experimenting with a simulated fruit-fly nervous system.**
 
-**Live:** https://flyboxlab.vercel.app/
+[Live lab](https://flyboxlab.vercel.app/) · [Documentation](https://flyboxlab.vercel.app/docs) · [Contributing](CONTRIBUTING.md) · [License](LICENSE)
 
-FLY.LAB puts a FlyBrain instance into a small closed-loop world:
+FLYBOX places a FlyBrain neural simulation inside an interactive closed-loop world:
 
 ```text
-WORLD → sensory encoding → FlyBrain → descending-neuron activity
-  ↑                                             ↓
-  └──────────────── movement ← motor mapping ───┘
+WORLD
+  ↓
+experimental sensory encoder
+  ↓
+FlyBrain connectome simulation
+  ↓
+descending-neuron readout
+  ↓
+experimental body decoder
+  ↓
+WORLD
 ```
 
-The project is intentionally careful about scientific claims. It does **not** claim to simulate a complete biological fly brain, cognition, or consciousness. The current movement decoder is explicitly labeled **Experimental Motor Mapping**.
+The current FlyBrain graph contains **166,700 neurons** and roughly **25.6 million synapses**. FLYBOX lets you stimulate and silence populations, create reproducible lesions, build sensory environments, fork neural state, compare agents, inspect live activity in 3D, run structured experiments, and export experiment data.
 
-## What is implemented
+FLYBOX is open source and contributions are welcome.
 
-- Real `flybrain==0.1.0` backend by default.
-- One selected primary fly: **PRIME**.
-- Up to 4 independent full FlyBrain instances by default.
-- Real `brain.step(...)` on every neural simulation step.
-- Compact WebSocket frames at 20 Hz.
-- Real firing counts and descending-neuron activity.
-- Side-aware sensory injections using FlyBrain cell metadata.
-- Clickable world editor: food, stimulus, looming stimulus, obstacle.
-- Closed-loop deterministic movement from side-specific descending-neuron firing.
-- Pause, resume, single-step, reset, and 0.25× / 1× / 2× / 5× / 10× controls.
-- Population stimulation, silencing and restoration.
-- Deterministic random synapse lesion.
-- Sensory-gain control.
-- Population activity table.
-- Experiment log and JSON export.
-- Bounded firing-neuron samples for future connectome visualization.
-- Explicit development mock mode behind `FLYLAB_MOCK=1`.
-- Automated backend tests and frontend typecheck/build.
+## Try it
+
+**Lab:** https://flyboxlab.vercel.app/
+
+**Docs:** https://flyboxlab.vercel.app/docs
+
+Useful documentation entry points:
+
+- [Introduction](https://flyboxlab.vercel.app/docs)
+- [Architecture](https://flyboxlab.vercel.app/docs/concepts/architecture)
+- [Simulation model](https://flyboxlab.vercel.app/docs/concepts/simulation)
+- [Connectome data](https://flyboxlab.vercel.app/docs/neuroscience/connectome)
+- [Sensory encoders](https://flyboxlab.vercel.app/docs/neuroscience/sensory-encoders)
+- [Motor decoder](https://flyboxlab.vercel.app/docs/neuroscience/motor-decoder)
+- [3D brain viewer](https://flyboxlab.vercel.app/docs/neuroscience/brain-viewer)
+- [Experiment guide](https://flyboxlab.vercel.app/docs/guides/experiments)
+- [API reference](https://flyboxlab.vercel.app/docs/reference/api)
+- [Scientific limitations](https://flyboxlab.vercel.app/docs/reference/limitations)
+
+## What you can do
+
+### Build a world
+
+Place and manipulate:
+
+- fruit and odor fields;
+- visual targets and goals;
+- looming stimuli;
+- predators;
+- sound and light sources;
+- walls and obstacles.
+
+### Inspect the simulated nervous system
+
+- live firing counts and firing fractions;
+- descending-neuron traces;
+- DNg100, DNa02, DNp01, and MDN readouts;
+- population firing and silencing state;
+- real MaleCNS x/y/z soma coordinates in the 3D viewer;
+- bounded live spike overlays;
+- pairwise neural and trajectory divergence.
+
+### Intervene
+
+- stimulate a named neural population;
+- silence and restore populations;
+- apply deterministic seeded synapse lesions;
+- change sensory gain;
+- fork exact CPU/mock neural state;
+- rewind exact in-session checkpoints.
+
+### Experiment
+
+Included structured modes cover:
+
+- food seeking;
+- threat avoidance;
+- races and maze tasks;
+- mutation/intervention comparisons;
+- limited-budget connectome stimulation;
+- hidden-intervention inference;
+- recent-history/state-dependence experiments.
+
+### Extend it
+
+The repository includes:
+
+- FastAPI backend;
+- React/Vite frontend;
+- WebSocket live-sandbox protocol;
+- Python and JavaScript SDKs;
+- developer console;
+- experiment import/export;
+- explicit mock mode for development;
+- CI for backend tests and frontend typecheck/build.
+
+## Scientific provenance
+
+FLYBOX intentionally separates five kinds of information:
+
+| Label | Meaning |
+|---|---|
+| **CONNECTOME DATA** | Structural data from FlyBrain/MaleCNS such as graph weights, cell types, side metadata, and soma coordinates |
+| **SIMULATED NEURAL DYNAMICS** | Firing and state produced by FlyBrain |
+| **EXPERIMENTAL ENCODER** | FLYBOX mapping from sandbox events into neural input |
+| **EXPERIMENTAL DECODER** | FLYBOX mapping from neural readouts into body motion |
+| **GAME MECHANIC** | Energy, PLAY assists, bodies, scoring, challenges, and other interaction rules |
+
+FLYBOX does **not** claim a complete biological fly simulation, exact natural behavior, complete sensory transduction, ground-truth motor decoding, cognition, or consciousness.
+
+See the [scientific limitations](https://flyboxlab.vercel.app/docs/reference/limitations) for details.
+
+## Quick local setup
+
+Requirements:
+
+- Python 3.11+
+- Node.js 20+
+- npm
+
+### Backend
+
+```bash
+python -m venv .venv
+source .venv/bin/activate
+# Windows PowerShell: .venv\Scripts\Activate.ps1
+
+python -m pip install --upgrade pip
+pip install -r backend/requirements.txt
+
+cd backend
+python -m uvicorn app.main:app --reload
+```
+
+### Frontend
+
+```bash
+cd frontend
+npm install
+npm run dev
+```
+
+Open the Vite development URL, normally http://localhost:5173.
+
+### Mock development mode
+
+For UI/backend development without loading the real connectome:
+
+macOS/Linux:
+
+```bash
+export FLYLAB_MOCK=1
+```
+
+PowerShell:
+
+```powershell
+$env:FLYLAB_MOCK="1"
+```
+
+Mock mode is explicit and visibly labeled. Production never silently falls back to fake neural data.
+
+## Tests
+
+Backend:
+
+```bash
+cd backend
+pytest -q
+```
+
+Frontend:
+
+```bash
+cd frontend
+npm run typecheck
+npm run build
+```
 
 ## Repository
 
@@ -43,490 +191,67 @@ flybox/
 │   ├── app/
 │   │   ├── main.py
 │   │   ├── models/
-│   │   │   └── schemas.py
 │   │   └── simulation/
-│   │       ├── engine.py
-│   │       ├── fly.py
-│   │       ├── interventions.py
-│   │       ├── mappings.py
-│   │       ├── measurements.py
-│   │       ├── mockbrain.py
-│   │       └── world.py
-│   ├── requirements.txt
 │   └── tests/
-│       └── test_core.py
 ├── frontend/
-│   ├── src/
-│   │   ├── App.tsx
-│   │   ├── Arena.tsx
-│   │   ├── api.ts
-│   │   ├── main.tsx
-│   │   ├── styles.css
-│   │   └── types.ts
-│   ├── index.html
-│   ├── package.json
-│   └── tsconfig.json
-├── scripts/
-│   ├── run-backend.ps1
-│   └── run-frontend.ps1
-├── .github/workflows/ci.yml
-├── .gitignore
-└── README.md
+│   └── src/
+│       ├── App.tsx
+│       ├── Arena.tsx
+│       ├── BrainView.tsx
+│       ├── DocsPage.tsx
+│       └── api.ts
+├── docs/
+├── sdk/
+├── examples/
+├── .github/
+├── CONTRIBUTING.md
+├── CODE_OF_CONDUCT.md
+├── SECURITY.md
+├── DATA_LICENSE.md
+├── THIRD_PARTY_NOTICES.md
+└── LICENSE
 ```
 
-## Requirements
+## Contributing
 
-- Python 3.11+ recommended
-- Node.js 20+
-- npm
-- FlyBrain data will be handled by the FlyBrain package
-- Optional NVIDIA CUDA setup supported by FlyBrain
+Contributions are welcome from engineers, neuroscientists, students, designers, educators, and researchers.
 
-## Install
+Start with [CONTRIBUTING.md](CONTRIBUTING.md). Changes that touch neuroscience should clearly distinguish measured/source data from simulated dynamics, experimental mappings, and game logic.
 
-From the repository root:
+Good areas for contributions include:
 
-### Python
+- full neuron morphology / skeleton rendering;
+- circuit and graph exploration;
+- population search;
+- experiment protocol tooling;
+- activity recording and timeline analysis;
+- reproducibility and validation;
+- SDK/API improvements;
+- performance;
+- accessibility;
+- docs and tutorials.
 
-PowerShell:
+For public launch tasks, see [LAUNCH_CHECKLIST.md](LAUNCH_CHECKLIST.md).
 
-```powershell
-python -m venv .venv
-.\.venv\Scripts\Activate.ps1
-python -m pip install --upgrade pip
-pip install -r .\backend\requirements.txt
-```
+## Data and third-party licensing
 
-macOS/Linux:
+FLYBOX software is licensed under the **Apache License 2.0**.
 
-```bash
-python -m venv .venv
-source .venv/bin/activate
-python -m pip install --upgrade pip
-pip install -r backend/requirements.txt
-```
+MaleCNS-derived scientific data and third-party dependencies retain their own licenses and attribution requirements. See:
 
-### Frontend
+- [DATA_LICENSE.md](DATA_LICENSE.md)
+- [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md)
 
-```powershell
-cd frontend
-npm install
-cd ..
-```
+## Security
 
-## Run
+Please do not report security vulnerabilities through public issues. See [SECURITY.md](SECURITY.md).
 
-Open two terminals from the repository root.
+## Deployment
 
-### Terminal 1 — backend
+The repository contains `Dockerfile.vercel`, which builds the Vite frontend, installs the Python backend, bundles FlyBrain data at image-build time, and serves the frontend/API/WebSocket from one origin.
 
-PowerShell:
+The production sandbox is intentionally ephemeral: there are no user accounts or persistent personal worlds.
 
-```powershell
-.\.venv\Scripts\Activate.ps1
-cd backend
-python -m uvicorn app.main:app --reload
-```
+---
 
-Or:
-
-```powershell
-.\scripts\run-backend.ps1
-```
-
-The API is available at:
-
-```text
-http://localhost:8000
-```
-
-### Terminal 2 — frontend
-
-```powershell
-cd frontend
-npm run dev
-```
-
-Or:
-
-```powershell
-.\scripts\run-frontend.ps1
-```
-
-Open the Vite URL, normally:
-
-```text
-http://localhost:5173
-```
-
-## First FlyBrain start
-
-FlyBrain may need to acquire its connectome data on first initialization. That is handled by the FlyBrain package. FLY.LAB does not commit the large connectome arrays to this repository.
-
-If FlyBrain cannot initialize, the API returns:
-
-```text
-FlyBrain backend unavailable.
-```
-
-It does **not** silently substitute random data.
-
-## Development mock
-
-For UI/backend work without loading the real connectome:
-
-PowerShell:
-
-```powershell
-$env:FLYLAB_MOCK="1"
-cd backend
-python -m uvicorn app.main:app --reload
-```
-
-The frontend displays **MOCK MODE** whenever this is active.
-
-Mock mode is not the production/default behavior.
-
-## Environment variables
-
-| Variable | Default | Meaning |
-|---|---|---|
-| `FLYLAB_MOCK` | `0` | Set to `1` for explicit mock mode |
-| `FLYLAB_SEED` | `64` | Root experiment seed |
-| `FLYLAB_MAX_FLIES` | `4` | Maximum simultaneous FlyBrain instances |
-| `FLY_DEVICE` | `auto` | FlyBrain device selection |
-| `FLYLAB_ORIGINS` | `http://localhost:5173` | Allowed frontend origins |
-| `VITE_API_URL` | `http://localhost:8000` | Frontend API URL |
-| `VITE_WS_URL` | `ws://localhost:8000/ws` | Frontend WebSocket URL |
-
-## Current sensory mapping
-
-FLY.LAB uses actual FlyBrain metadata for cell types and side.
-
-- Normal visual stimulus → `LC10a`
-- Looming stimulus → `LC4` + `LPLC2`
-- The world-space bearing chooses the FlyBrain `L` or `R` side metadata.
-
-The injection itself uses the real FlyBrain interface:
-
-```python
-brain.step(inject=[(neuron_indices, voltage_amount)])
-```
-
-These mappings are experimental task encodings; the UI does not present them as a full biological visual system.
-
-## Experimental Motor Mapping
-
-FlyBrain exposes side metadata for descending neurons, but FLY.LAB does not claim a complete biologically validated motor decoder.
-
-The current deterministic engineering mapping is:
-
-- left/right descending-neuron firing-rate difference → angular turn
-- total descending-neuron firing rate → forward speed
-
-The UI labels this **Experimental Motor Mapping**.
-
-## Interventions
-
-Currently implemented:
-
-- stimulate a named population once
-- silence a named population
-- restore a silenced population
-- deterministic random synapse lesion
-- sensory-gain change
-
-Every intervention is logged and included in JSON export.
-
-Silencing removes that population from the firing set before the next recurrent propagation, so it changes subsequent dynamics instead of changing only the UI.
-
-## World editor
-
-Select a tool above the arena, then click inside the arena:
-
-- `FOOD`
-- `STIMULUS`
-- `LOOM`
-- `OBSTACLE`
-
-`INSPECT` lets you select a fly.
-
-## Experiment export
-
-Open:
-
-```text
-GET /api/experiments/export
-```
-
-The export contains:
-
-- format version
-- seed
-- simulation dt
-- simulation time
-- world objects
-- fly configuration
-- sensory gain
-- intervention history
-- trajectories
-- experiment events
-
-## Tests
-
-Backend:
-
-```powershell
-cd backend
-pytest -q
-```
-
-Frontend:
-
-```powershell
-cd frontend
-npm install
-npm run typecheck
-npm run build
-```
-
-CI performs these checks in explicit mock mode so validation does not require downloading the large connectome dataset.
-
-## Scientific limitations
-
-- This is a simplified leaky integrate-and-fire connectome simulation.
-- The FlyBrain model itself contains calibrated, not directly measured, dynamic parameters.
-- The current world-to-sensory encoding is an experiment interface, not a full sensory transduction model.
-- The motor decoder is an explicit engineering mapping.
-- Agent position and energy are simulation-game state.
-- The current implementation does not claim cognition, consciousness, or biological behavior equivalence.
-- A 10% synapse lesion is a computational intervention, not a claim about a corresponding biological injury.
-
-## Performance
-
-The real graph contains roughly 25.6 million synapses. FLY.LAB therefore:
-
-- caps full FlyBrain agents
-- never sends the graph to the browser
-- sends only compact metrics and a bounded firing sample
-- keeps experiment logs bounded
-- does not iterate all synapses in Python per UI frame
-- lets FlyBrain's optimized implementation perform propagation
-
-## Screenshots
-
-_Add screenshots here after running the real connectome locally._
-
-## Next milestones
-
-The architecture is ready to extend with:
-
-- full deterministic replay/import
-- exact state fork where FlyBrain state copying is validated
-- Compare mode and divergence plots
-- anatomical connectome view using `brain.positions` when coordinates are suitable
-- challenge mode
-- mystery-brain experiments
-- artificial brain-to-brain coupling
-
-Those are intentionally secondary to keeping the core simulation honest and operational.
-
-
-## Deploy to Vercel
-
-The repository includes a root `Dockerfile.vercel`. Vercel will build the React/Vite frontend, bundle the FlyBrain Python backend and connectome data into one container, and serve the frontend, REST API, and WebSocket from one origin.
-
-1. In Vercel, choose **Add New → Project**.
-2. Import the GitHub repository `gauravvvvvvvvvv/flybox`.
-3. Keep the repository root as the project root.
-4. Deploy. Vercel auto-detects `Dockerfile.vercel`.
-5. Open the generated `*.vercel.app` URL.
-
-No `VITE_API_URL` or `VITE_WS_URL` is required in production; the frontend automatically uses the current HTTPS/WSS origin.
-
-The container defaults to `FLYLAB_MAX_FLIES=2` on Vercel to keep memory usage conservative. Override it in Vercel environment variables if your compute tier has enough memory.
-
-### Vercel caveats
-
-- WebSocket support and large functions are currently Vercel public-beta features.
-- FlyBrain's ~260 MB validated connectome is downloaded during the container image build and stored in the image, not downloaded on each cold start.
-- Vercel may recycle an instance. That intentionally resets the current ephemeral sandbox.
-- No database or persistent session store is required by the product design.
-
-
-## FLYBOX V2 — Play first, inspect deeper
-
-The project now has four surfaces over the same simulation:
-
-### PLAY
-
-Designed to be understandable without neuroscience knowledge.
-
-- Spawn and rename agents.
-- Swap bodies: fly, car, bot, drone, walker, ship or synth.
-- Grab any agent with the mouse and move it.
-- Possess the selected body with WASD while its connectome keeps receiving sensory input.
-- Add or drag fruit, targets, looming objects, predators, sound sources, lights, goals and walls.
-- Paint non-edible odor fields directly into the arena.
-- Watch plain-language `WHY?` explanations for current behavior.
-- See a separate `GAME ASSIST · NOT BIOLOGY` meter whenever PLAY's locomotion/foraging helpers are active.
-- Earn local session achievements.
-
-### CHALLENGES
-
-Included challenge presets:
-
-- Snack Attack
-- Don't Get Squished
-- You vs Fly
-- Fly Race
-- Brain Car
-- Maze Run
-- Mutation Tournament
-- Connectome Hijack
-- Mystery Brain
-- Sandbox
-
-Mutation Tournament gives rivals explicit reproducible modifications rather than merely cosmetic labels.
-
-### LAB
-
-The scientific/technical layer includes:
-
-- real FlyBrain firing counts
-- real descending-neuron traces
-- named DNg100 forward readout
-- named DNa02 left/right steering readout
-- named DNp01 escape readout
-- named MDN backward readout
-- population stimulation, silencing and seeded lesions
-- live pairwise firing-set Jaccard divergence
-- live physical/trajectory divergence
-- real MaleCNS soma-position visualization when `brain.positions` is available
-- bounded live firing overlays on the anatomical projection
-- 4-replicate native FlyBrain batch probes using one shared connectome graph
-- experiment JSON export
-
-The anatomical brain view does not invent coordinates. If position metadata is absent, the UI says the view is unavailable.
-
-### BUILD
-
-- click-to-place world editor
-- draggable world objects
-- odor paintbrush
-- random seeded worlds
-- daily deterministic world
-- daylight/night presentation
-- wind body mechanic
-- ephemeral per-page sandbox state
-
-There are no accounts, rooms, cookies, saved profiles or automatic persistence. Every page load receives a fresh in-memory sandbox.
-
-### WEIRD
-
-- neural-firework overlay
-- live connectome-to-audio tone
-- arbitrary body swaps
-- Brain Car / Synth Brain
-- exact CPU/mock brain forking
-- artificial Brain → Brain coupling
-- Chaos Button
-- Cinema mode
-
-Brain-to-brain coupling is explicitly labeled an **experimental artificial coupling**. It is not presented as biological fly communication.
-
-## Time Machine
-
-On CPU/mock backends, **SAVE MOMENT** records an exact in-memory checkpoint including:
-
-- FlyBrain membrane state
-- current spike state
-- FlyBrain RNG state
-- neural traces
-- world state
-- agent state
-- intervention state
-- queued stimulation
-- challenge state
-- artificial brain couplings
-
-**REWIND** restores that checkpoint.
-
-Exact CUDA checkpoint/fork support is intentionally disabled until CuPy state cloning has been validated.
-
-## Senses
-
-Current experimental world encoders:
-
-| World input | Neural input |
-|---|---|
-| Fruit / odor paint | ORN_DM1 + ORN_DM2 |
-| Target | LC10a |
-| Looming object | LPLC2 using angular growth |
-| Close threat | LC4 |
-| Touching wall | SNta |
-| Sound source | JO-A / JO-B populations |
-| Light | FlyBrain photoreceptors using stored azimuth metadata |
-
-These are experimental encoders around the connectome. They are not a claim that the sandbox reproduces full fly sensory transduction.
-
-## PLAY versus LAB
-
-This distinction is central to FLYBOX.
-
-The simplified spiking FlyBrain model does not reliably convert ordinary sensory drive into a complete walking command. Therefore:
-
-- **LAB**: no locomotion/foraging assist. Named descending-neuron signals alone drive the engineering body decoder.
-- **PLAY**: adds visible deterministic search, food-foraging and predator-avoidance body assists so the sandbox is enjoyable.
-
-The UI always exposes the assist values separately from neural outputs.
-
-## Developer surface
-
-The live REST/WebSocket API can be used directly.
-
-Developer console examples:
-
-```text
-stim LC4 0.8
-silence LC10a
-restore LC10a
-spawn food .5 .5
-fork
-random 42
-challenge race
-```
-
-Small client SDKs are included:
-
-```text
-sdk/python/flybox.py
-sdk/js/flybox.ts
-examples/hijack.py
-```
-
-## Ephemeral session model
-
-FLYBOX intentionally has **no user accounts and no persistent sandbox storage**.
-
-For the browser app, the live sandbox is owned by a single WebSocket connection. All stateful browser commands travel over that same socket, which keeps one page's commands pinned to the same Vercel Function instance instead of relying on HTTP request affinity.
-
-- Clicking **OPEN THE BOX** creates one temporary server-side simulation for that browser page.
-- A second tab gets a different sandbox.
-- Other visitors never share your world.
-- Closing or leaving the page sends a best-effort discard request.
-- A disconnected sandbox is also deleted automatically after a short grace period.
-- Refreshing creates a new sandbox.
-- Time Machine checkpoints exist only inside the current sandbox.
-- JSON export is explicit and user-initiated; FLYBOX does not automatically save or restore it.
-
-This keeps the product closer to a disposable physics sandbox than a social platform.
-
-## Resource honesty
-
-A real FlyBrain agent owns a full neural state over the 166,700-neuron connectome. FLYBOX therefore retains a strict full-agent limit.
-
-It does not fake a 20-agent "real connectome colony" by silently replacing extra brains with random lightweight agents.
-
-For large statistical work, use the native batched probe API instead of spawning many independent UI agents.
-
+**FLYBOX is a playground, experiment interface, and connectome debugger—not a claim that we have recreated a conscious fly.**

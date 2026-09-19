@@ -1,0 +1,19 @@
+cff-version: 1.2.0
+message: "If you use FLYBOX in research, please cite the software using these metadata and cite the underlying connectome sources as appropriate."
+title: "FLYBOX"
+type: software
+authors:
+  - name: "FLYBOX contributors"
+repository-code: "https://github.com/gauravvvvvvvvvv/flybox"
+url: "https://flyboxlab.vercel.app/"
+license: Apache-2.0
+version: "0.2.0"
+date-released: "2026-09-19"
+abstract: "An open-source interactive sandbox and experiment interface for a simplified fruit-fly connectome simulation using FlyBrain and MaleCNS-derived data."
+keywords:
+  - connectomics
+  - neuroscience
+  - Drosophila
+  - simulation
+  - FlyBrain
+  - MaleCNS

@@ -692,3 +692,78 @@ aside { padding: 18px; background: #0b0e0c; }
   .brain-canvas-wrap canvas { height:245px; }
   .brain-view-expanded { inset:6px; }
 }
+
+
+/* ───────────────────────── Official docs layout ───────────────────────── */
+.techdocs { min-height:100vh; background:#0b0d0c; color:#e8ece9; }
+.techdocs-header { position:sticky; top:0; z-index:60; height:58px; display:flex; align-items:center; gap:12px; padding:0 22px; border-bottom:1px solid #242a26; background:rgba(11,13,12,.95); backdrop-filter:blur(14px); }
+.techdocs-logo { color:#f3f6f4; text-decoration:none; font-weight:900; letter-spacing:-.04em; }
+.techdocs-header > span { color:#657168; font:700 10px ui-monospace,monospace; letter-spacing:.12em; }
+.techdocs-header nav { margin-left:auto; display:flex; align-items:center; gap:6px; }
+.techdocs-header nav a { color:#8f9992; text-decoration:none; padding:8px 10px; font:600 10px ui-monospace,monospace; }
+.techdocs-header nav a:hover { color:#d8ff99; }
+.techdocs-header .techdocs-launch { color:#d9ffa0; border:1px solid #5a7139; background:#11170f; }
+
+.techdocs-layout { display:grid; grid-template-columns:255px minmax(0,820px) 210px; gap:0; max-width:1380px; margin:0 auto; }
+.techdocs-nav { position:sticky; top:58px; height:calc(100vh - 58px); overflow:auto; padding:26px 18px 40px; border-right:1px solid #202622; background:#0d100e; }
+.techdocs-version { margin-bottom:22px; color:#758078; font:700 9px ui-monospace,monospace; }
+.techdocs-version b { color:#b8c2bb; }
+.techdocs-nav section { margin-bottom:22px; }
+.techdocs-nav h4 { margin:0 0 7px; color:#4f5b53; font:800 8px ui-monospace,monospace; letter-spacing:.11em; }
+.techdocs-nav a { display:block; margin:1px 0; padding:7px 9px; border-radius:5px; color:#89948c; text-decoration:none; font-size:11px; line-height:1.35; }
+.techdocs-nav a:hover { color:#d4e2d8; background:#121613; }
+.techdocs-nav a.active { color:#dcff9c; background:#151c12; box-shadow:inset 2px 0 #87a64d; }
+
+.techdocs-article { min-width:0; padding:54px 58px 90px; border-right:1px solid #202622; }
+.techdocs-breadcrumb { color:#5b665f; font:700 9px ui-monospace,monospace; letter-spacing:.06em; text-transform:uppercase; }
+.techdocs-breadcrumb b { color:#7f8b83; }
+.techdocs-article > h1 { margin:17px 0 10px; font-size:clamp(38px,5vw,58px); letter-spacing:-.05em; line-height:1; }
+.techdocs-description { margin:0 0 42px; max-width:680px; color:#8c9790; font-size:16px; line-height:1.65; }
+.techdocs-body { color:#b2bbb5; font-size:14px; line-height:1.75; }
+.techdocs-body h2 { margin:46px 0 12px; color:#eef2ef; font-size:24px; letter-spacing:-.025em; }
+.techdocs-body h2:first-child { margin-top:0; }
+.techdocs-body h3 { margin:30px 0 10px; color:#dce4df; font-size:16px; }
+.techdocs-body p { margin:0 0 18px; }
+.techdocs-body strong { color:#dce5df; }
+.techdocs-body ul, .techdocs-body ol { padding-left:22px; margin:0 0 22px; }
+.techdocs-body li { margin:6px 0; }
+.techdocs-body blockquote { margin:22px 0; padding:16px 18px; border-left:3px solid #789748; background:#10140f; color:#c9d8ce; font-size:15px; }
+.docs-code { margin:18px 0 28px; padding:16px 18px; overflow:auto; border:1px solid #252d28; border-radius:7px; background:#070a08; color:#c8f18b; font:12px/1.7 ui-monospace,monospace; }
+.docs-note { margin:26px 0; padding:16px 18px; border:1px solid #3e4e31; border-radius:7px; background:#0f160d; }
+.docs-note > b { display:block; margin-bottom:6px; color:#cfff83; font:800 10px ui-monospace,monospace; letter-spacing:.08em; }
+.docs-note p { margin:0; color:#93a08f; }
+.docs-reference-table { width:100%; border-collapse:collapse; margin:20px 0 30px; font-size:12px; }
+.docs-reference-table th, .docs-reference-table td { text-align:left; padding:11px 12px; border:1px solid #26302a; vertical-align:top; }
+.docs-reference-table th { color:#a9b4ac; background:#101411; font:700 9px ui-monospace,monospace; letter-spacing:.07em; }
+.docs-reference-table td:first-child { color:#dbe4de; font-weight:700; }
+.docs-reference-table td:nth-child(2) { color:#bce875; font-family:ui-monospace,monospace; }
+
+.techdocs-pager { display:grid; grid-template-columns:1fr 1fr; gap:12px; margin-top:60px; padding-top:24px; border-top:1px solid #222925; }
+.techdocs-pager a { display:grid; gap:5px; padding:13px 15px; border:1px solid #252d28; border-radius:6px; color:#99a59d; text-decoration:none; background:#0d100e; }
+.techdocs-pager a:hover { border-color:#53673c; background:#10150e; }
+.techdocs-pager span { color:#59645d; font:700 8px ui-monospace,monospace; text-transform:uppercase; letter-spacing:.08em; }
+.techdocs-pager b { color:#d7dfda; font-size:11px; }
+.techdocs-pager .next { text-align:right; }
+
+.techdocs-meta { position:sticky; top:58px; height:calc(100vh - 58px); padding:30px 20px; color:#667168; font-size:10px; }
+.techdocs-meta > b { color:#556159; font:800 8px ui-monospace,monospace; letter-spacing:.1em; }
+.techdocs-meta p { margin:8px 0 16px; color:#9ca69f; font-size:11px; }
+.techdocs-meta hr { border:0; border-top:1px solid #222925; margin:14px 0; }
+.techdocs-meta span { display:block; margin-top:13px; color:#505b54; font:700 8px ui-monospace,monospace; text-transform:uppercase; }
+.techdocs-meta code, .techdocs-meta a { display:block; margin-top:4px; color:#8d9a91; font:10px ui-monospace,monospace; text-decoration:none; }
+
+@media (max-width:1100px) {
+  .techdocs-layout { grid-template-columns:235px minmax(0,1fr); }
+  .techdocs-meta { display:none; }
+  .techdocs-article { border-right:0; }
+}
+@media (max-width:760px) {
+  .techdocs-header { padding:0 12px; }
+  .techdocs-header nav a:not(.techdocs-launch) { display:none; }
+  .techdocs-layout { display:block; }
+  .techdocs-nav { position:relative; top:0; height:auto; border-right:0; border-bottom:1px solid #202622; padding:14px 12px; overflow:visible; }
+  .techdocs-nav section { display:none; }
+  .techdocs-version { margin:0; }
+  .techdocs-article { padding:38px 20px 70px; }
+  .techdocs-pager { grid-template-columns:1fr; }
+}

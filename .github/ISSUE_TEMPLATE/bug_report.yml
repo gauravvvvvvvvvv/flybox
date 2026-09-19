@@ -1,0 +1,60 @@
+name: Bug report
+description: Report reproducible incorrect behavior in FLYBOX
+title: "[Bug]: "
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: Thanks for helping improve FLYBOX. Do not use this form for security vulnerabilities; see SECURITY.md.
+  - type: textarea
+    id: description
+    attributes:
+      label: What happened?
+      description: Describe the bug clearly.
+    validations:
+      required: true
+  - type: textarea
+    id: reproduce
+    attributes:
+      label: Steps to reproduce
+      placeholder: |
+        1. Open...
+        2. Place...
+        3. Switch...
+    validations:
+      required: true
+  - type: dropdown
+    id: mode
+    attributes:
+      label: Backend mode
+      options:
+        - Real FlyBrain
+        - Mock mode
+        - Not sure
+    validations:
+      required: true
+  - type: input
+    id: environment
+    attributes:
+      label: Browser / OS
+      placeholder: Chrome 153 / Windows 11
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behavior
+    validations:
+      required: true
+  - type: textarea
+    id: logs
+    attributes:
+      label: Logs, seed, or experiment export
+      description: Paste relevant console/backend logs or attach a minimal exported experiment.
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: Checks
+      options:
+        - label: I searched existing issues for duplicates.
+          required: true
+        - label: This is not a security vulnerability.
+          required: true
