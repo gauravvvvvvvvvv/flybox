@@ -20,6 +20,10 @@ export default function BrainView({ fly }: { fly: FlyFrame | undefined }) {
   const [pitch, setPitch] = useState(0.34);
   const [zoom, setZoom] = useState(1.02);
   const [mode, setMode] = useState<ViewMode>("3D");
+  const [showGrid, setShowGrid] = useState(true);
+  const [showStructure, setShowStructure] = useState(true);
+  const [showSpikes, setShowSpikes] = useState(true);
+  const [expanded, setExpanded] = useState(false);
 
   useEffect(() => {
     if (!fly) return;
@@ -33,11 +37,15 @@ export default function BrainView({ fly }: { fly: FlyFrame | undefined }) {
   const activity = useMemo(() => {
     const senses = fly?.senses ?? {};
     const motor = fly?.motor ?? {};
-    const sensory = Math.max(0, ...Object.values(senses));
-    const motorPeak = Math.max(0, ...Object.values(motor));
+    const sensoryEntries = Object.entries(senses);
+    const motorEntries = Object.entries(motor);
+    const sensoryPeak: [string, number] = sensoryEntries.sort((a, b) => b[1] - a[1])[0] ?? ["none", 0];
+    const motorPeak: [string, number] = motorEntries.sort((a, b) => b[1] - a[1])[0] ?? ["none", 0];
     return {
-      sensory,
-      motor: motorPeak,
+      sensory: sensoryPeak[1],
+      sensoryName: sensoryPeak[0],
+      motor: motorPeak[1],
+      motorName: motorPeak[0],
       dn: fly?.dn_activity ?? 0,
       state: fly?.state ?? "IDLE",
     };
@@ -56,16 +64,26 @@ export default function BrainView({ fly }: { fly: FlyFrame | undefined }) {
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
     const w = rect.width, h = rect.height;
     ctx.clearRect(0, 0, w, h);
-    ctx.fillStyle = "#070a08";
+
+    const bg = ctx.createLinearGradient(0, 0, 0, h);
+    bg.addColorStop(0, "#08100b");
+    bg.addColorStop(.55, "#060a08");
+    bg.addColorStop(1, "#040605");
+    ctx.fillStyle = bg;
     ctx.fillRect(0, 0, w, h);
 
-    ctx.strokeStyle = "rgba(183,255,90,.045)";
-    ctx.lineWidth = 1;
-    for (let i = 1; i < 6; i++) {
-      const x = (w / 6) * i;
-      const y = (h / 6) * i;
-      ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, h); ctx.stroke();
-      ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(w, y); ctx.stroke();
+    if (showGrid) {
+      ctx.strokeStyle = "rgba(183,255,90,.045)";
+      ctx.lineWidth = 1;
+      for (let i = 1; i < 8; i++) {
+        const x = (w / 8) * i;
+        const y = (h / 8) * i;
+        ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, h); ctx.stroke();
+        ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(w, y); ctx.stroke();
+      }
+      ctx.strokeStyle = "rgba(183,255,90,.08)";
+      ctx.beginPath(); ctx.moveTo(w * .5, 0); ctx.lineTo(w * .5, h); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(0, h * .5); ctx.lineTo(w, h * .5); ctx.stroke();
     }
 
     if (!structure || structure.kind !== "anatomical") {
@@ -73,8 +91,8 @@ export default function BrainView({ fly }: { fly: FlyFrame | undefined }) {
       ctx.font = "10px ui-monospace, monospace";
       ctx.fillText(
         structure?.kind === "mock-unavailable" ? "ANATOMICAL VIEW UNAVAILABLE IN MOCK MODE" : "NO USABLE SOMA POSITIONS",
-        12,
-        22,
+        16,
+        28,
       );
       return;
     }
@@ -97,51 +115,53 @@ export default function BrainView({ fly }: { fly: FlyFrame | undefined }) {
         X = rx; Y = ry; Z = rz2;
       }
       const perspective = mode === "3D" ? 1 / (1.72 - Z * .28) : 1;
-      const s = Math.min(w, h) * .43 * zoom * perspective;
+      const s = Math.min(w, h) * .45 * zoom * perspective;
       return { x: w * .5 + X * s, y: h * .5 + Y * s, z: Z, p: perspective };
     };
 
-    const pts = structure.points.map(([id, x, y, z]) => ({ id, ...project(x, y, z) }));
-    pts.sort((a, b) => a.z - b.z);
+    if (showStructure) {
+      const pts = structure.points.map(([id, x, y, z]) => ({ id, ...project(x, y, z) }));
+      pts.sort((a, b) => a.z - b.z);
 
-    ctx.globalCompositeOperation = "source-over";
-    for (const p of pts) {
-      const alpha = .10 + Math.max(0, p.z + .3) * .05;
-      ctx.fillStyle = `rgba(164,178,169,${Math.min(.24, alpha)})`;
-      const r = Math.max(.55, .72 * p.p);
-      ctx.fillRect(p.x, p.y, r, r);
+      ctx.globalCompositeOperation = "source-over";
+      for (const p of pts) {
+        const depth = Math.max(0, Math.min(1, (p.z + 1) * .5));
+        const alpha = .06 + depth * .13;
+        ctx.fillStyle = `rgba(174,191,180,${alpha})`;
+        const r = Math.max(.55, .78 * p.p);
+        ctx.fillRect(p.x, p.y, r, r);
+      }
     }
 
     const firing = fly.brain_view?.firing_positions ?? [];
-    ctx.globalCompositeOperation = "lighter";
-    for (const [, x, y, z] of firing) {
-      const p = project(x, y, z);
-      const r = 1.8 + Math.min(2.8, (fly.dn_activity ?? 0) * 10) + p.p * .6;
-      const g = ctx.createRadialGradient(p.x, p.y, 0, p.x, p.y, r * 3.2);
-      g.addColorStop(0, "rgba(214,255,143,.95)");
-      g.addColorStop(.22, "rgba(182,255,90,.78)");
-      g.addColorStop(1, "rgba(182,255,90,0)");
-      ctx.fillStyle = g;
-      ctx.beginPath();
-      ctx.arc(p.x, p.y, r * 3.2, 0, Math.PI * 2);
-      ctx.fill();
-      ctx.fillStyle = "#dfff9d";
-      ctx.beginPath();
-      ctx.arc(p.x, p.y, Math.max(1.2, r * .42), 0, Math.PI * 2);
-      ctx.fill();
+    if (showSpikes) {
+      ctx.globalCompositeOperation = "lighter";
+      for (const [, x, y, z] of firing) {
+        const p = project(x, y, z);
+        const r = 1.45 + Math.min(2.6, (fly.dn_activity ?? 0) * 10) + p.p * .55;
+        const g = ctx.createRadialGradient(p.x, p.y, 0, p.x, p.y, r * 4);
+        g.addColorStop(0, "rgba(233,255,194,1)");
+        g.addColorStop(.18, "rgba(198,255,112,.92)");
+        g.addColorStop(.48, "rgba(145,234,65,.30)");
+        g.addColorStop(1, "rgba(182,255,90,0)");
+        ctx.fillStyle = g;
+        ctx.beginPath();
+        ctx.arc(p.x, p.y, r * 4, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.fillStyle = "#e8ffc2";
+        ctx.beginPath();
+        ctx.arc(p.x, p.y, Math.max(1.0, r * .37), 0, Math.PI * 2);
+        ctx.fill();
+      }
+      ctx.globalCompositeOperation = "source-over";
     }
-    ctx.globalCompositeOperation = "source-over";
 
-    const vignette = ctx.createRadialGradient(w*.5,h*.48,Math.min(w,h)*.1,w*.5,h*.48,Math.max(w,h)*.62);
+    const vignette = ctx.createRadialGradient(w*.5,h*.48,Math.min(w,h)*.08,w*.5,h*.48,Math.max(w,h)*.65);
     vignette.addColorStop(0, "rgba(0,0,0,0)");
-    vignette.addColorStop(1, "rgba(0,0,0,.62)");
+    vignette.addColorStop(1, "rgba(0,0,0,.68)");
     ctx.fillStyle = vignette;
     ctx.fillRect(0,0,w,h);
-
-    ctx.fillStyle = "#667169";
-    ctx.font = "9px ui-monospace, monospace";
-    ctx.fillText(`${structure.mapped.toLocaleString()} MAPPED SOMA · LIVE SIMULATED SPIKES`, 10, h - 9);
-  }, [fly, structure, yaw, pitch, zoom, mode]);
+  }, [fly, structure, yaw, pitch, zoom, mode, showGrid, showStructure, showSpikes, expanded]);
 
   const pointerDown = (e: React.PointerEvent<HTMLCanvasElement>) => {
     if (mode !== "3D") return;
@@ -156,39 +176,85 @@ export default function BrainView({ fly }: { fly: FlyFrame | undefined }) {
   const pointerUp = () => { drag.current = null; };
   const wheel = (e: React.WheelEvent<HTMLCanvasElement>) => {
     e.preventDefault();
-    setZoom((v) => Math.max(.65, Math.min(1.8, v - e.deltaY * .0008)));
+    setZoom((v) => Math.max(.65, Math.min(1.9, v - e.deltaY * .0008)));
+  };
+
+  const reset = () => {
+    setYaw(-.55);
+    setPitch(.34);
+    setZoom(1.02);
+    setMode("3D");
   };
 
   return (
-    <div className="brain-view">
-      <div className="brain-view-head">
-        <span>LIVE 3D CONNECTOME VIEW</span>
-        <b>{fly?.brain_view?.firing_positions.length ?? 0} MAPPED SPIKES</b>
+    <div className={expanded ? "brain-view brain-view-expanded" : "brain-view"}>
+      <div className="brain-view-head brain-view-head-pro">
+        <div>
+          <span>MALECNS / LIVE NEURAL ACTIVITY</span>
+          <strong>3D CONNECTOME INSPECTOR</strong>
+        </div>
+        <div className="brain-head-stats">
+          <span><i className="brain-dot brain-dot-static" />{structure?.mapped.toLocaleString() ?? "—"} MAPPED SOMA</span>
+          <span><i className="brain-dot brain-dot-live" />{fly?.brain_view?.firing_positions.length ?? 0} LIVE SPIKES</span>
+        </div>
       </div>
-      <div className="brain-view-controls">
-        {(["3D","TOP","SIDE"] as ViewMode[]).map((item) => (
-          <button key={item} className={mode === item ? "active" : ""} onClick={() => setMode(item)}>{item}</button>
-        ))}
+
+      <div className="brain-view-controls brain-toolbar-pro">
+        <div className="brain-segment">
+          {(["3D","TOP","SIDE"] as ViewMode[]).map((item) => (
+            <button key={item} className={mode === item ? "active" : ""} onClick={() => setMode(item)}>{item}</button>
+          ))}
+        </div>
+        <div className="brain-layer-toggles">
+          <button className={showStructure ? "active" : ""} onClick={() => setShowStructure(!showStructure)}>SOMA</button>
+          <button className={showSpikes ? "active" : ""} onClick={() => setShowSpikes(!showSpikes)}>SPIKES</button>
+          <button className={showGrid ? "active" : ""} onClick={() => setShowGrid(!showGrid)}>GRID</button>
+        </div>
         <span />
-        <button onClick={() => { setYaw(-.55); setPitch(.34); setZoom(1.02); }}>RESET VIEW</button>
+        <button onClick={reset}>RESET</button>
+        <button onClick={() => setExpanded(!expanded)}>{expanded ? "COLLAPSE" : "EXPAND"}</button>
       </div>
-      <canvas
-        ref={canvas}
-        onPointerDown={pointerDown}
-        onPointerMove={pointerMove}
-        onPointerUp={pointerUp}
-        onPointerCancel={pointerUp}
-        onWheel={wheel}
-      />
-      <div className="brain-live-strip">
+
+      <div className="brain-canvas-wrap">
+        <canvas
+          ref={canvas}
+          onPointerDown={pointerDown}
+          onPointerMove={pointerMove}
+          onPointerUp={pointerUp}
+          onPointerCancel={pointerUp}
+          onWheel={wheel}
+        />
+        <div className="brain-hud brain-hud-left">
+          <span>VIEW</span><b>{mode}</b>
+          <span>ZOOM</span><b>{zoom.toFixed(2)}×</b>
+          <span>CAMERA</span><b>{mode === "3D" ? "DRAG / WHEEL" : "ORTHO"}</b>
+        </div>
+        <div className="brain-hud brain-hud-right">
+          <span>ANATOMY</span><b>{structure?.kind === "anatomical" ? "REAL XYZ SOMA" : "UNAVAILABLE"}</b>
+          <span>ACTIVITY</span><b>SIMULATED SPIKES</b>
+          <span>GRAPH</span><b>SERVER-SIDE</b>
+        </div>
+        <div className="brain-axis">
+          <span className="axis-x">X</span><span className="axis-y">Y</span><span className="axis-z">Z</span>
+        </div>
+      </div>
+
+      <div className="brain-live-strip brain-live-strip-pro">
         <div><span>BEHAVIOR</span><b>{activity.state}</b></div>
-        <div><span>SENSORY PEAK</span><b>{activity.sensory.toFixed(3)}</b></div>
+        <div><span>SENSORY PEAK</span><b>{activity.sensoryName} · {activity.sensory.toFixed(3)}</b></div>
         <div><span>DN ACTIVITY</span><b>{activity.dn.toFixed(4)}</b></div>
-        <div><span>MOTOR PEAK</span><b>{activity.motor.toFixed(2)}</b></div>
+        <div><span>MOTOR PEAK</span><b>{activity.motorName} · {activity.motor.toFixed(2)}</b></div>
       </div>
+
+      <div className="brain-legend">
+        <span><i className="brain-dot brain-dot-static" /> MaleCNS soma sample</span>
+        <span><i className="brain-dot brain-dot-live" /> currently firing mapped neuron</span>
+        <span className="brain-legend-note">full 25.6M-edge graph stays on server</span>
+      </div>
+
       <p>
         {structure?.kind === "anatomical"
-          ? "Real MaleCNS x/y/z soma coordinates are rendered directly; glow is driven by the current FlyBrain simulated firing set. This is true 3D soma anatomy, not synthetic depth. Full neurite skeletons remain a separate morphology layer."
+          ? "Real MaleCNS x/y/z soma coordinates are rendered directly. Glow follows the current FlyBrain simulated firing set. This is true 3D soma anatomy; full axon/dendrite morphology is not yet loaded into the browser."
           : "No fake anatomy is rendered when coordinate metadata is unavailable."}
       </p>
     </div>

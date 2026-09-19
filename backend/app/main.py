@@ -11,6 +11,7 @@ from urllib.parse import parse_qs, urlsplit
 from fastapi import FastAPI, HTTPException, Request, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
+from fastapi.responses import FileResponse
 
 from .models.schemas import BatchProbeIn, BrainCouplingIn, ConsoleIn, EnvironmentIn, InterventionIn, ManualDriveIn, RenameIn, WorldObjectIn
 from .simulation.batch import run_batch_probe
@@ -673,4 +674,11 @@ async def websocket_endpoint(ws: WebSocket):
 
 static_dir = os.getenv("FLYLAB_STATIC_DIR")
 if static_dir and os.path.isdir(static_dir):
+    @app.get("/docs", include_in_schema=False)
+    @app.get("/docs/", include_in_schema=False)
+    @app.get("/help", include_in_schema=False)
+    @app.get("/help/", include_in_schema=False)
+    async def docs_page():
+        return FileResponse(os.path.join(static_dir, "index.html"))
+
     app.mount("/", StaticFiles(directory=static_dir, html=True), name="frontend")
