@@ -28,6 +28,33 @@ export type Achievement = {
   description: string;
 };
 
+export type HistoryExperiment = {
+  phase: "exposure" | "test" | "complete";
+  a: string;
+  b: string;
+  a_history: string;
+  b_history: string;
+  exposure_started: number;
+  exposure_ends: number;
+  exposure_duration: number;
+  test_started?: number;
+  test_ends?: number;
+  test_duration: number;
+  samples: number;
+  neural_now: number;
+  spatial_now: number;
+  neural_max: number;
+  spatial_max: number;
+  result?: {
+    mean_neural_divergence: number;
+    max_neural_divergence: number;
+    max_behavioral_divergence: number;
+    samples: number;
+    interpretation: string;
+  } | null;
+  claim: string;
+};
+
 export type ChallengeState = {
   id: string;
   name: string;
@@ -41,6 +68,7 @@ export type ChallengeState = {
   winner?: string | null;
   actions: number;
   secret_hidden: boolean;
+  history?: HistoryExperiment | null;
 };
 
 export type FlyFrame = {
