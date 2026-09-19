@@ -42,6 +42,7 @@ const CHALLENGES = [
   ["MUTATION TOURNAMENT", "Modified rivals compete in one arena, including explicit seeded interventions such as LC4-OFF and LESION-5%."],
   ["CONNECTOME HIJACK", "Reach a descending-neuron target using a limited stimulation budget."],
   ["MYSTERY BRAIN", "One agent receives a hidden reproducible intervention. Experiment and then reveal it."],
+  ["RECENT HISTORY", "Start from an exact matched brain fork, give the two neural states different recent sensory histories, then remove all cues and compare them in the same neutral test. This tests short-term state/history dependence—not learned memory."],
   ["SANDBOX", "No objective. Build a world and mess with the connectome."],
 ] as const;
 
