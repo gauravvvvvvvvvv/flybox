@@ -1,0 +1,8 @@
+blank_issues_enabled: true
+contact_links:
+  - name: Security vulnerability
+    url: https://github.com/gauravvvvvvvvvv/flybox/security
+    about: Please report security issues privately when possible.
+  - name: FLYBOX documentation
+    url: https://flyboxlab.vercel.app/docs
+    about: Read the technical documentation before opening a usage question.
