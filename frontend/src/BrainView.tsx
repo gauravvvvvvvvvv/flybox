@@ -7,7 +7,7 @@ type StaticBrain = {
   projection?: string | null;
   mapped: number;
   neurons: number;
-  points: [number, number, number][];
+  points: [number, number, number, number][];
 };
 
 type ViewMode = "3D" | "TOP" | "SIDE";
@@ -81,14 +81,14 @@ export default function BrainView({ fly }: { fly: FlyFrame | undefined }) {
 
     const cy = Math.cos(yaw), sy = Math.sin(yaw);
     const cp = Math.cos(pitch), sp = Math.sin(pitch);
-    const project = (x: number, z: number, seed: number) => {
+    const project = (x: number, y: number, z: number) => {
       let X = (x - .5) * 2;
       let Y = (z - .5) * 2;
-      let Z = Math.sin(seed * 12.9898) * .18 + Math.cos(seed * .173) * .07;
+      let Z = (y - .5) * 2;
       if (mode === "TOP") {
-        Z = Y; Y = Math.sin(seed * .37) * .16;
+        Y = Z; Z = 0;
       } else if (mode === "SIDE") {
-        X = Math.sin(seed * .23) * .16;
+        X = Z; Z = 0;
       } else {
         const rx = X * cy - Z * sy;
         const rz = X * sy + Z * cy;
@@ -101,7 +101,7 @@ export default function BrainView({ fly }: { fly: FlyFrame | undefined }) {
       return { x: w * .5 + X * s, y: h * .5 + Y * s, z: Z, p: perspective };
     };
 
-    const pts = structure.points.map(([id, x, y]) => ({ id, ...project(x, y, id) }));
+    const pts = structure.points.map(([id, x, y, z]) => ({ id, ...project(x, y, z) }));
     pts.sort((a, b) => a.z - b.z);
 
     ctx.globalCompositeOperation = "source-over";
@@ -114,8 +114,8 @@ export default function BrainView({ fly }: { fly: FlyFrame | undefined }) {
 
     const firing = fly.brain_view?.firing_positions ?? [];
     ctx.globalCompositeOperation = "lighter";
-    for (const [id, x, y] of firing) {
-      const p = project(x, y, id);
+    for (const [, x, y, z] of firing) {
+      const p = project(x, y, z);
       const r = 1.8 + Math.min(2.8, (fly.dn_activity ?? 0) * 10) + p.p * .6;
       const g = ctx.createRadialGradient(p.x, p.y, 0, p.x, p.y, r * 3.2);
       g.addColorStop(0, "rgba(214,255,143,.95)");
@@ -188,7 +188,7 @@ export default function BrainView({ fly }: { fly: FlyFrame | undefined }) {
       </div>
       <p>
         {structure?.kind === "anatomical"
-          ? "Real MaleCNS soma coordinates are spatially mapped; glow is driven by the current FlyBrain simulated firing set. Depth is a deterministic display offset because the current API exposes normalized x/z soma projection, not full morphology skeletons."
+          ? "Real MaleCNS x/y/z soma coordinates are rendered directly; glow is driven by the current FlyBrain simulated firing set. This is true 3D soma anatomy, not synthetic depth. Full neurite skeletons remain a separate morphology layer."
           : "No fake anatomy is rendered when coordinate metadata is unavailable."}
       </p>
     </div>
