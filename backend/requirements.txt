@@ -1,7 +1,7 @@
 fastapi==0.116.1
 uvicorn[standard]==0.35.0
 numpy>=1.26
-pydantic>=2.8
+pydantic>=2.13.5
 flybrain==0.1.0
 pytest>=8.3
 httpx>=0.28
