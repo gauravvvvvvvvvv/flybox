@@ -101,7 +101,7 @@ export type FlyFrame = {
   brain_view: {
     kind: string;
     mapped: number;
-    firing_positions: [number, number, number][];
+    firing_positions: [number, number, number, number][];
   };
   interventions: Array<Record<string, unknown>>;
 };
