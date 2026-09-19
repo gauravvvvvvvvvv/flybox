@@ -656,6 +656,38 @@ User experiments to infer it.
 
 Then reveal the secret.
 
+## Recent History
+
+Purpose:
+
+- test whether different recent sensory histories leave different continuing neural states
+- avoid claiming associative learning or long-term biological memory
+
+Procedure:
+
+1. FLYBOX creates an exact CPU/mock neural-state fork from PRIME.
+2. Both bodies are temporarily switched to stationary SYNTH bodies.
+3. Brain A receives a short food/odor sensory history.
+4. Brain B receives a short loom/threat sensory history.
+5. All cues are removed.
+6. Both agents are placed at the exact same position and heading.
+7. Their original body/controller are restored.
+8. FLYBOX measures neural Jaccard divergence and physical trajectory separation during the same cue-free test.
+
+The UI reports:
+
+- current neural divergence
+- current spatial divergence
+- maximum neural divergence
+- maximum behavioral separation
+- mean neural divergence over the neutral test
+
+The interpretation is deliberately conservative:
+
+> Different recent sensory histories can leave different continuing simulated neural states. This is short-term state/history dependence, not a claim of learned biological memory.
+
+No plasticity, associative-learning rule, or hidden "memory variable" is added for this challenge.
+
 ## Sandbox
 
 No objective.
