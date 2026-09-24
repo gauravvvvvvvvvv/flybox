@@ -1,4 +1,15 @@
+import {
+  browserRpc,
+  closeBrowserRuntime,
+  connectBrowserFrames,
+} from "./browserRuntime";
+
 const isDev = import.meta.env.DEV;
+
+export const RUNTIME_MODE =
+  (import.meta.env.VITE_SIMULATION_RUNTIME ?? "browser").toLowerCase() === "server"
+    ? "server"
+    : "browser";
 
 export const API =
   import.meta.env.VITE_API_URL ??
@@ -102,7 +113,7 @@ function openSocket(): Promise<WebSocket> {
   return opening;
 }
 
-async function rpc(method: string, path: string, body?: unknown) {
+async function serverRpc(method: string, path: string, body?: unknown) {
   const ws = await openSocket();
   const id = `${++rpcCounter}`;
   const promise = new Promise<any>((resolve, reject) => {
@@ -112,7 +123,7 @@ async function rpc(method: string, path: string, body?: unknown) {
   return promise;
 }
 
-async function httpPost(path: string, body?: unknown) {
+async function serverHttpPost(path: string, body?: unknown) {
   const response = await fetch(API + path, {
     method: "POST",
     headers: {
@@ -127,6 +138,10 @@ async function httpPost(path: string, body?: unknown) {
 }
 
 export function connectFrames(onFrame: FrameListener, onError: ErrorListener) {
+  if (RUNTIME_MODE === "browser") {
+    return connectBrowserFrames(onFrame, onError);
+  }
+
   frameListeners.add(onFrame);
   errorListeners.add(onError);
   void openSocket().catch((error) => emitError(String(error)));
@@ -138,21 +153,28 @@ export function connectFrames(onFrame: FrameListener, onError: ErrorListener) {
 }
 
 export async function get(path: string) {
-  return rpc("GET", path);
+  if (RUNTIME_MODE === "browser") return browserRpc("GET", path);
+  return serverRpc("GET", path);
 }
 
 export async function post(path: string, body?: unknown) {
-  // This probe is intentionally stateless and computationally isolated from the
-  // live sandbox, so it does not need to be pinned to the sandbox WebSocket.
-  if (path === "/api/batch/probe") return httpPost(path, body);
-  return rpc("POST", path, body);
+  if (RUNTIME_MODE === "browser") return browserRpc("POST", path, body);
+
+  if (path === "/api/batch/probe") return serverHttpPost(path, body);
+  return serverRpc("POST", path, body);
 }
 
 export async function del(path: string) {
-  return rpc("DELETE", path);
+  if (RUNTIME_MODE === "browser") return browserRpc("DELETE", path);
+  return serverRpc("DELETE", path);
 }
 
 export function closeSession() {
+  if (RUNTIME_MODE === "browser") {
+    closeBrowserRuntime();
+    return;
+  }
+
   allowReconnect = false;
   if (reconnectTimer !== null) {
     window.clearTimeout(reconnectTimer);
