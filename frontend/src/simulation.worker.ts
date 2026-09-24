@@ -367,7 +367,8 @@ function buildSomaSample(store: SomaStore, limit = 3500) {
 
 async function loadSoma(base: string): Promise<SomaStore | null> {
   try {
-    const response = await fetch(new URL("soma.bin", base).toString(), {
+    const somaUrl = `${base.endsWith("/") ? base : `${base}/`}soma.bin`;
+    const response = await fetch(somaUrl, {
       cache: "force-cache",
       credentials: "omit",
     });
