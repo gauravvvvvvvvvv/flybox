@@ -20,7 +20,7 @@ type BodyType = FlyFrame["body_type"];
 type Controller = FlyFrame["controller"];
 type Side = "L" | "R";
 
-type LocalFly = FlyFrame & {
+type LocalFly = Omit<FlyFrame, "lesion_fraction"> & {
   seed: number;
   sensoryGain: number;
   manualTurn: number;
@@ -54,6 +54,19 @@ type NeuralSnapshot = {
   silenced: string[];
 };
 
+type MysterySecret = {
+  fly_id: string;
+  type: "silence_population";
+  target: string;
+};
+
+type BrowserHistoryState = NonNullable<ChallengeState["history"]> & {
+  exposure_ends: number;
+  body_type: BodyType;
+  controller: Controller;
+  neural_sum: number;
+};
+
 type Snapshot = {
   t: number;
   running: boolean;
@@ -64,6 +77,8 @@ type Snapshot = {
   couplings: Frame["couplings"];
   achievements: Frame["achievements"];
   challenge: ChallengeState;
+  mysterySecret: MysterySecret | null;
+  historyState: BrowserHistoryState | null;
   neural: Record<string, NeuralSnapshot>;
 };
 
@@ -296,8 +311,9 @@ let events: Frame["events"] = [
 ];
 let couplings: Frame["couplings"] = [];
 let achievements: Frame["achievements"] = [];
+let mysterySecret: MysterySecret | null = null;
+let historyState: BrowserHistoryState | null = null;
 let challenge: ChallengeState = challengeState("sandbox");
-let mysteryRevealed = false;
 const neural = new Map<string, NeuralState>();
 
 function clone<T>(value: T): T {
@@ -542,7 +558,7 @@ function challengeState(id: string): ChallengeState {
     completed: false,
     winner: null,
     actions: 0,
-    secret_hidden: id === "mystery" && !mysteryRevealed,
+    secret_hidden: false,
     history: null,
   };
 }
@@ -1542,6 +1558,7 @@ function advance() {
   challenge.elapsed = Math.max(0, t - challenge.started);
 
   evaluateChallenge();
+  advanceHistoryExperiment();
 
   if (flies.length >= 3) {
     unlockAchievement("party_box", "PARTY BOX", "Ran at least three agents together.");
@@ -1645,6 +1662,11 @@ function comparisons(): Frame["comparisons"] {
 }
 
 function framePayload(): Frame {
+  challenge.secret_hidden =
+    challenge.id === "mystery" && mysterySecret !== null && !challenge.completed;
+  challenge.history =
+    challenge.id === "history" && historyState ? clone(historyState) : null;
+
   return {
     type: "frame",
     t,
@@ -1749,6 +1771,8 @@ function snapshot(): Snapshot {
     couplings: clone(couplings),
     achievements: clone(achievements),
     challenge: clone(challenge),
+    mysterySecret: clone(mysterySecret),
+    historyState: clone(historyState),
     neural: snapshotNeural(),
   };
 }
@@ -1780,6 +1804,12 @@ function restore(data: Snapshot) {
   couplings = clone(data.couplings);
   achievements = clone(data.achievements);
   challenge = clone(data.challenge);
+  mysterySecret = clone(data.mysterySecret ?? null);
+  historyState = clone(data.historyState ?? null);
+  challenge.secret_hidden =
+    challenge.id === "mystery" && mysterySecret !== null && !challenge.completed;
+  challenge.history =
+    challenge.id === "history" && historyState ? clone(historyState) : null;
 
   neural.clear();
   if (runtimeStatus === "ready") {
@@ -1987,6 +2017,13 @@ function applyIntervention(fly: LocalFly, body: any) {
     throw new Error("Real connectome must finish loading before neural interventions");
   }
 
+  if (challenge.id === "hijack") {
+    const budget = challenge.budget ?? 5;
+    if (challenge.actions >= budget) {
+      throw new Error(`Challenge budget exhausted (${budget} actions)`);
+    }
+  }
+
   const row = {
     type: kind,
     target: target || null,
@@ -2051,6 +2088,269 @@ function applyIntervention(fly: LocalFly, body: any) {
     `${fly.name}: ${kind}${target ? ` ${target}` : ""}${lesionDetail}.`,
   );
   return row;
+}
+
+
+function clearWorldObjects() {
+  world.objects = [];
+}
+
+function resetChallengeFlyState() {
+  for (const fly of flies) {
+    fly.food_eaten = 0;
+    fly.escape_events = 0;
+    fly.alive = true;
+    fly.energy = Math.max(55, fly.energy);
+    fly.hunger = clamp(1 - fly.energy / 100);
+    fly.state = "READY";
+  }
+}
+
+function removeNonPrimeFlies() {
+  const removed = new Set(
+    flies.filter((fly) => fly.id !== "prime").map((fly) => fly.id),
+  );
+  flies = flies.filter((fly) => fly.id === "prime");
+  for (const id of removed) neural.delete(id);
+  couplings = couplings.filter(
+    (link) => !removed.has(link.source) && !removed.has(link.target),
+  );
+}
+
+function startChallenge(id: string) {
+  if (!CHALLENGES[id]) throw new Error(`Unknown challenge: ${id}`);
+
+  challenge = challengeState(id);
+  mysterySecret = null;
+  historyState = null;
+  resetChallengeFlyState();
+
+  if (id === "race") {
+    clearWorldObjects();
+    addWorldObject({ kind: "goal", x: 0.90, y: 0.50, intensity: 1, radius: 0.045, label: "FINISH" });
+    addWorldObject({ kind: "obstacle", x: 0.52, y: 0.30, intensity: 0, radius: 0.09 });
+    addWorldObject({ kind: "obstacle", x: 0.52, y: 0.70, intensity: 0, radius: 0.09 });
+    flies.forEach((fly, index) => {
+      fly.x = 0.10;
+      fly.y = 0.45 + 0.08 * (index % 2);
+      fly.heading = 0;
+      fly.trail = [];
+    });
+  } else if (id === "food_run") {
+    clearWorldObjects();
+    for (const [x, y] of [[0.2,0.2],[0.8,0.2],[0.2,0.8],[0.8,0.8],[0.5,0.5]] as Array<[number,number]>) {
+      addWorldObject({ kind: "food", x, y, intensity: 1, radius: 0.025, amount: 1 });
+    }
+  } else if (id === "maze") {
+    clearWorldObjects();
+    addWorldObject({ kind: "food", x: 0.90, y: 0.50, intensity: 1, radius: 0.03, amount: 1 });
+    const walls: Array<[number, number, number]> = [
+      [0.30,0.25,0.035],[0.30,0.35,0.035],[0.30,0.45,0.035],[0.30,0.55,0.035],
+      [0.30,0.65,0.035],[0.52,0.35,0.035],[0.52,0.45,0.035],[0.52,0.55,0.035],
+      [0.72,0.25,0.035],[0.72,0.35,0.035],[0.72,0.65,0.035],[0.72,0.75,0.035],
+    ];
+    for (const [x, y, radius] of walls) {
+      addWorldObject({ kind: "obstacle", x, y, intensity: 0, radius });
+    }
+    flies.forEach((fly, index) => {
+      fly.x = 0.08;
+      fly.y = 0.44 + index * 0.04;
+      fly.heading = 0;
+      fly.trail = [];
+    });
+  } else if (id === "tournament") {
+    clearWorldObjects();
+    for (const [x, y] of [[0.22,0.22],[0.78,0.22],[0.22,0.78],[0.78,0.78],[0.50,0.50]] as Array<[number,number]>) {
+      addWorldObject({ kind: "food", x, y, intensity: 1, radius: 0.025, amount: 1 });
+    }
+    const bodies: BodyType[] = ["bot", "car"];
+    while (flies.length < Math.min(3, MAX_FLIES)) {
+      const index = flies.length;
+      const rival = spawnFly(new URLSearchParams(), {
+        name: index === 1 ? "LC4-OFF" : "LESION-5%",
+        body_type: bodies[Math.min(index - 1, bodies.length - 1)],
+      });
+      const local = findFly(rival.id);
+      local.x = 0.12;
+      local.y = 0.35 + index * 0.15;
+      local.heading = 0;
+      if (index === 1) {
+        applyIntervention(local, { type: "silence_population", target: "LC4" });
+      } else {
+        applyIntervention(local, {
+          type: "random_synapse_lesion",
+          fraction: 0.05,
+          seed: world.seed + 505,
+        });
+      }
+    }
+  } else if (id === "survive") {
+    world.objects = world.objects.filter((obj) => obj.kind !== "predator");
+    addWorldObject({
+      kind: "predator", x: 0.85, y: 0.50, intensity: 1, radius: 0.05,
+      vx: -0.055, vy: 0.035, label: "PREDATOR",
+    });
+  } else if (id === "hunt") {
+    clearWorldObjects();
+    addWorldObject({ kind: "food", x: 0.18, y: 0.18, intensity: 1, radius: 0.025, amount: 1 });
+    addWorldObject({ kind: "food", x: 0.82, y: 0.82, intensity: 1, radius: 0.025, amount: 1 });
+    addWorldObject({ kind: "predator", x: 0.78, y: 0.50, intensity: 1, radius: 0.055, label: "YOU" });
+    for (const fly of flies) {
+      fly.x = 0.35;
+      fly.y = 0.50;
+      fly.trail = [];
+    }
+  } else if (id === "braincar") {
+    clearWorldObjects();
+    addWorldObject({ kind: "goal", x: 0.90, y: 0.50, intensity: 1, radius: 0.05, label: "FINISH" });
+    addWorldObject({ kind: "obstacle", x: 0.50, y: 0.35, intensity: 0, radius: 0.07 });
+    addWorldObject({ kind: "obstacle", x: 0.50, y: 0.65, intensity: 0, radius: 0.07 });
+    const prime = findFly("prime");
+    prime.body_type = "car";
+    prime.x = 0.10;
+    prime.y = 0.50;
+    prime.heading = 0;
+    prime.trail = [];
+  } else if (id === "mystery") {
+    if (flies.length < 2) {
+      spawnFly(new URLSearchParams(), { name: "MYSTERY", body_type: "fly" });
+    }
+    const candidates = ["LC4", "LPLC2", "LC10a"];
+    const target = candidates[Math.abs(world.seed) % candidates.length];
+    const mystery = flies.find((fly) => !fly.is_prime);
+    if (!mystery) throw new Error("Could not create mystery agent");
+    mystery.name = "MYSTERY";
+    applyIntervention(mystery, { type: "silence_population", target });
+    mysterySecret = {
+      fly_id: mystery.id,
+      type: "silence_population",
+      target,
+    };
+    challenge.secret_hidden = true;
+  } else if (id === "history") {
+    removeNonPrimeFlies();
+    const source = findFly("prime");
+    const originalBody = source.body_type;
+    const originalController = source.controller;
+    const forkPublic = forkFly("prime");
+    const fork = findFly(forkPublic.id);
+    fork.name = "HISTORY B";
+
+    source.body_type = "synth";
+    fork.body_type = "synth";
+    source.x = 0.15; source.y = 0.20; source.heading = 0; source.speed = 0; source.trail = [];
+    fork.x = 0.15; fork.y = 0.80; fork.heading = 0; fork.speed = 0; fork.trail = [];
+
+    clearWorldObjects();
+    addWorldObject({
+      kind: "food", x: 0.23, y: 0.20, intensity: 1, radius: 0.026,
+      amount: 1, label: "FOOD HISTORY",
+    });
+    addWorldObject({
+      kind: "loom", x: 0.23, y: 0.80, intensity: 1, radius: 0.038,
+      label: "THREAT HISTORY",
+    });
+
+    const exposureDuration = 3;
+    const testDuration = 8;
+    historyState = {
+      phase: "exposure",
+      a: source.id,
+      b: fork.id,
+      a_history: "food/odor",
+      b_history: "loom/threat",
+      exposure_started: t,
+      exposure_ends: t + exposureDuration,
+      exposure_duration: exposureDuration,
+      test_duration: testDuration,
+      body_type: originalBody,
+      controller: originalController,
+      samples: 0,
+      neural_sum: 0,
+      neural_now: 0,
+      spatial_now: 0,
+      neural_max: 0,
+      spatial_max: 0,
+      result: null,
+      claim: "recent neural history/state dependence; not learned biological memory",
+    };
+    challenge.history = clone(historyState);
+    addEvent(
+      "challenge",
+      "RECENT HISTORY: exact browser fork created; A gets food/odor history, B gets loom/threat history.",
+    );
+  }
+
+  addEvent("challenge", `Started ${challenge.name}.`);
+  return clone(challenge);
+}
+
+function advanceHistoryExperiment() {
+  const exp = historyState;
+  if (challenge.id !== "history" || !exp || challenge.completed) return;
+
+  if (exp.phase === "exposure" && t >= exp.exposure_ends) {
+    clearWorldObjects();
+    for (const id of [exp.a, exp.b]) {
+      const fly = flies.find((item) => item.id === id);
+      if (!fly) continue;
+      fly.x = 0.24;
+      fly.y = 0.50;
+      fly.heading = 0;
+      fly.speed = 0;
+      fly.state = "HISTORY TEST";
+      fly.body_type = exp.body_type;
+      fly.controller = exp.controller;
+      fly.trail = [];
+    }
+
+    exp.phase = "test";
+    exp.test_started = t;
+    exp.test_ends = t + exp.test_duration;
+    challenge.history = clone(exp);
+    addEvent(
+      "challenge",
+      "RECENT HISTORY: exposure cues removed; identical neutral test started.",
+    );
+    return;
+  }
+
+  if (exp.phase !== "test") return;
+
+  const aFly = flies.find((fly) => fly.id === exp.a);
+  const bFly = flies.find((fly) => fly.id === exp.b);
+  const aNeural = neural.get(exp.a)?.previousFired;
+  const bNeural = neural.get(exp.b)?.previousFired;
+  if (!aFly || !bFly || !aNeural || !bNeural) return;
+
+  const intersection = countIntersection(aNeural, bNeural);
+  const union = aNeural.length + bNeural.length - intersection;
+  const neuralDelta = union ? 1 - intersection / union : 0;
+  const spatialDelta = Math.hypot(aFly.x - bFly.x, aFly.y - bFly.y);
+
+  exp.samples += 1;
+  exp.neural_sum += neuralDelta;
+  exp.neural_now = neuralDelta;
+  exp.spatial_now = spatialDelta;
+  exp.neural_max = Math.max(exp.neural_max, neuralDelta);
+  exp.spatial_max = Math.max(exp.spatial_max, spatialDelta);
+
+  if (exp.test_ends != null && t >= exp.test_ends) {
+    const samples = Math.max(1, exp.samples);
+    exp.phase = "complete";
+    exp.result = {
+      mean_neural_divergence: exp.neural_sum / samples,
+      max_neural_divergence: exp.neural_max,
+      max_behavioral_divergence: exp.spatial_max,
+      samples,
+      interpretation:
+        "Different recent sensory histories produced different continuing neural states during the same neutral test. This is short-term state/history dependence, not a claim of learned biological memory.",
+    };
+    challenge.completed = true;
+    addEvent("challenge", "RECENT HISTORY challenge complete.");
+  }
+
+  challenge.history = clone(exp);
 }
 
 async function runBatchProbe(body: any) {
@@ -2159,8 +2459,7 @@ function runConsole(command: string) {
   } else if (verb === "random") {
     return randomWorld(Number(parts[1] ?? world.seed));
   } else if (verb === "challenge") {
-    challenge = challengeState(parts[1] ?? "sandbox");
-    return clone(challenge);
+    return startChallenge(parts[1] ?? "sandbox");
   } else if (verb === "spawn") {
     return addWorldObject({
       kind: parts[1] ?? "food",
@@ -2213,6 +2512,8 @@ function resetSandbox() {
   achievements = [];
   checkpoints = [];
   challenge = challengeState("sandbox");
+  mysterySecret = null;
+  historyState = null;
   neural.clear();
   if (runtimeStatus === "ready") attachNeural(flies[0]);
 }
@@ -2457,19 +2758,24 @@ async function rpc(
     }
 
     if (path === "/api/challenges/mystery/reveal") {
-      mysteryRevealed = true;
+      if (challenge.id !== "mystery") {
+        throw new Error("Mystery challenge is not active");
+      }
+      challenge.completed = true;
       challenge.secret_hidden = false;
-      return {
-        secret:
-          "Browser mode keeps the mystery challenge interface but does not invent a hidden intervention.",
-      };
+      const secret = clone(mysterySecret);
+      if (secret) {
+        addEvent(
+          "challenge",
+          `MYSTERY REVEALED: ${secret.target} silenced on ${secret.fly_id}.`,
+        );
+      }
+      return { secret };
     }
 
     match = path.match(/^\/api\/challenges\/([^/]+)$/);
     if (match) {
-      challenge = challengeState(match[1]);
-      addEvent("challenge", `Started ${challenge.name}.`);
-      return clone(challenge);
+      return startChallenge(match[1]);
     }
 
     if (path === "/api/console") {

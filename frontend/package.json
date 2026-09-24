@@ -5,7 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "build": "npm run prepare:browser && vite build",
+    "build": "npm run check && npm run prepare:browser && vite build",
     "typecheck": "tsc --noEmit",
     "check": "tsc --noEmit",
     "fetch:connectome": "node ../scripts/fetch-browser-connectome.mjs",
