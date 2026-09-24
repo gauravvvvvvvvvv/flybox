@@ -390,7 +390,7 @@ export default function App() {
                 <Signal label="TOUCH" value={fly?.senses?.touch ?? 0} />
               </section>
 
-              <ChallengePanel frame={frame} onStart={(id) => safe(() => post(`/api/challenges/${id}`))} onReveal={() => safe(() => post("/api/challenges/mystery/reveal"))} />
+              <ChallengePanel frame={frame} onStart={(id: string) => safe(() => post(`/api/challenges/${id}`))} onReveal={() => safe(() => post("/api/challenges/mystery/reveal"))} />
 
               <section className="control-section">
                 <div className="section-label">ACHIEVEMENTS</div>
