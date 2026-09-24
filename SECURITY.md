@@ -23,11 +23,11 @@ Please avoid accessing data or systems that do not belong to you, destructive te
 Relevant reports include vulnerabilities in:
 
 - the public FLYBOX web application;
-- WebSocket/session isolation;
+- Web Worker/session isolation and cross-tab state separation;
 - API input handling;
 - experiment import/export;
 - dependency or build-chain configuration;
-- accidental exposure of secrets or server data.
+- accidental exposure of secrets, unsafe static asset configuration, or reference-backend data.
 
 The project intentionally stores sandbox state ephemerally and does not use user accounts or a persistent user database.
 
