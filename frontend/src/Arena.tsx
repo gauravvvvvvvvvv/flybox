@@ -131,30 +131,16 @@ export default function Arena({
   }, [frame, selectedFly, neuralOverlay]);
 
   function screenToWorld(clientX: number, clientY: number, rect: DOMRect) {
-    const sx = clientX - rect.left;
-    const sy = clientY - rect.top;
-    const activeCameraX = zoom <= 1 ? 0.5 : cameraCenter.x;
-    const activeCameraY = zoom <= 1 ? 0.5 : cameraCenter.y;
-    const cameraX = activeCameraX * rect.width;
-    const cameraY = activeCameraY * rect.height;
-
-    const worldPxX = cameraX + (sx - rect.width / 2) / zoom;
-    const worldPxY = cameraY + (sy - rect.height / 2) / zoom;
-
     return {
-      x: Math.max(0, Math.min(1, worldPxX / rect.width)),
-      y: Math.max(0, Math.min(1, worldPxY / rect.height)),
+      x: Math.max(0, Math.min(1, (clientX - rect.left) / rect.width)),
+      y: Math.max(0, Math.min(1, (clientY - rect.top) / rect.height)),
     };
   }
 
   function worldToScreen(x: number, y: number, rect: DOMRect) {
-    const activeCameraX = zoom <= 1 ? 0.5 : cameraCenter.x;
-    const activeCameraY = zoom <= 1 ? 0.5 : cameraCenter.y;
-    const cameraX = activeCameraX * rect.width;
-    const cameraY = activeCameraY * rect.height;
     return {
-      x: rect.width / 2 + (x * rect.width - cameraX) * zoom,
-      y: rect.height / 2 + (y * rect.height - cameraY) * zoom,
+      x: x * rect.width,
+      y: y * rect.height,
     };
   }
 
