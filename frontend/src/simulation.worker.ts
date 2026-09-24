@@ -519,10 +519,13 @@ function publicFly(fly: LocalFly): FlyFrame {
     previousOdor: _previousOdor,
     lastEscape: _lastEscape,
     silenced: _silenced,
-    lesionFraction: _lesionFraction,
+    lesionFraction,
     ...publicState
   } = fly;
-  return clone(publicState);
+  return {
+    ...clone(publicState),
+    lesion_fraction: lesionFraction,
+  };
 }
 
 function challengeState(id: string): ChallengeState {
@@ -2018,11 +2021,12 @@ function applyIntervention(fly: LocalFly, body: any) {
   } else if (kind === "random_synapse_lesion") {
     const changed = state.brain.lesion(row.fraction, row.seed);
     fly.lesionFraction = clamp(
-      fly.lesionFraction + row.fraction,
+      fly.lesionFraction + (1 - fly.lesionFraction) * row.fraction,
       0,
       1,
     );
     (row as any).synapses_lesioned = changed;
+    (row as any).lesion_fraction = fly.lesionFraction;
     unlockAchievement(
       "chaos_theory",
       "CHAOS THEORY",
@@ -2038,9 +2042,13 @@ function applyIntervention(fly: LocalFly, body: any) {
     "BRAIN SURGEON",
     "Applied a neural intervention.",
   );
+  const lesionDetail =
+    kind === "random_synapse_lesion"
+      ? ` · ${Number((row as any).synapses_lesioned ?? 0).toLocaleString()} synapses cut · ~${Math.round(fly.lesionFraction * 100)}% cumulative lesion`
+      : "";
   addEvent(
     "neural",
-    `${fly.name}: ${kind}${target ? ` ${target}` : ""}.`,
+    `${fly.name}: ${kind}${target ? ` ${target}` : ""}${lesionDetail}.`,
   );
   return row;
 }

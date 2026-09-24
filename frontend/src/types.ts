@@ -104,6 +104,7 @@ export type FlyFrame = {
     firing_positions: [number, number, number, number][];
   };
   interventions: Array<Record<string, unknown>>;
+  lesion_fraction: number;
 };
 
 export type RuntimeState = {

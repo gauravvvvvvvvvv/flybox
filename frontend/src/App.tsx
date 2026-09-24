@@ -95,6 +95,7 @@ export default function App() {
   const [cinematic, setCinematic] = useState(false);
   const [batchBusy, setBatchBusy] = useState(false);
   const [batchResult, setBatchResult] = useState<any>(null);
+  const [chaosFeedback, setChaosFeedback] = useState<string | null>(null);
   const keys = useRef(new Set<string>());
   const lastMove = useRef(0);
   const audio = useRef<{ ctx: AudioContext; osc: OscillatorNode; gain: GainNode } | null>(null);
@@ -247,6 +248,23 @@ export default function App() {
     await safe(() => post(`/api/flies/${selectedFly}/interventions`, {
       type, target, amount: 0.8, fraction: 0.1, seed: 64,
     }));
+  }
+
+  async function chaosBrain() {
+    const seed = crypto.getRandomValues(new Uint32Array(1))[0];
+    const result = await safe(() => post(`/api/flies/${selectedFly}/interventions`, {
+      type: "random_synapse_lesion",
+      fraction: 0.2,
+      seed,
+    }));
+    if (!result) return;
+
+    const cut = Number(result.synapses_lesioned ?? 0);
+    const cumulative = Number(result.lesion_fraction ?? 0);
+    setChaosFeedback(
+      `${cut.toLocaleString()} SYNAPSES CUT · ~${Math.round(cumulative * 100)}% LESIONED`,
+    );
+    window.setTimeout(() => setChaosFeedback(null), 3200);
   }
 
   async function toggleAudio() {
@@ -624,7 +642,11 @@ export default function App() {
                   CONNECT THIS BRAIN → ANOTHER
                 </button>
                 {(frame?.couplings.length ?? 0) > 0 && <button className="wide" onClick={() => safe(() => del("/api/couplings"))}>DISCONNECT BRAINS</button>}
-                <button className="danger wide" onClick={() => safe(() => post(`/api/flies/${selectedFly}/interventions`, { type: "random_synapse_lesion", fraction: 0.1, seed: Math.floor((frame?.world.seed ?? 64) % 100000) }))}>CHAOS BUTTON</button>
+                <button className="danger wide" onClick={chaosBrain}>CHAOS BUTTON · CUT 20% RANDOM SYNAPSES</button>
+                {chaosFeedback && <p className="microcopy">{chaosFeedback}</p>}
+                {(fly?.lesion_fraction ?? 0) > 0 && (
+                  <p className="microcopy">CURRENT BRAIN LESION: ~{Math.round((fly?.lesion_fraction ?? 0) * 100)}%</p>
+                )}
               </section>
               <section className="control-section">
                 <div className="section-label">BODY SWAP</div>
