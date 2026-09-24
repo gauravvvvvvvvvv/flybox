@@ -60,7 +60,7 @@ Place and manipulate:
 - DNg100, DNa02, DNp01, and MDN readouts;
 - population firing and silencing state;
 - live firing sets and named-population activity;
-- anatomy only when real coordinate metadata is available; the compact browser export currently omits soma XYZ and FLYBOX does not fabricate it;
+- real MaleCNS soma XYZ anatomy from the separately generated static `soma.bin` asset; neurons with unavailable coordinates are omitted rather than fabricated;
 - pairwise neural and trajectory divergence.
 
 ### Intervene
@@ -114,12 +114,12 @@ See [docs/BROWSER_RUNTIME.md](docs/BROWSER_RUNTIME.md) and the in-app documentat
 
 ## Quick local setup
 
-Requirements for the browser runtime:
+Requirements for the browser runtime source:
 
 - Node.js 20+
 - npm
 
-Python 3.11+ is only needed for the optional reference backend.
+The deployed app needs no Python. The repository's production build currently uses Python + NumPy only at build time to generate the static `soma.bin` anatomy asset; Python is also needed for the optional reference backend.
 
 ### Frontend
 
@@ -150,7 +150,7 @@ cd backend
 python -m uvicorn app.main:app --reload
 ```
 
-Set `VITE_SIMULATION_RUNTIME=server` during frontend development to compare against it.
+The current frontend is intentionally browser-only and does not switch to this backend. Use the backend/tests or a separate client when comparing the reference implementation.
 
 ## Tests
 

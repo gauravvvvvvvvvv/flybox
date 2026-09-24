@@ -262,7 +262,7 @@ const BODY_SPEED: Record<BodyType, number> = {
 };
 
 const EXPECTED_NEURONS = 166_700;
-const EXPECTED_SYNAPSES = 25_582_938;
+const EXPECTED_SYNAPSES = 25_088_107;
 const DT = 0.02;
 const MAX_FLIES = 4;
 const CONNECTOME_BASE = String(

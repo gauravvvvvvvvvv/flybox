@@ -85,7 +85,7 @@ Browser Web Worker
     description: "What anatomical and graph information FLYBOX receives from FlyBrain/MaleCNS.",
     body: <>
       <h2>Graph</h2><p>The compact browser export contains 166,700 neurons and 25,088,107 recurrent graph edges. FlyBrain drops synapses onto sensory neurons in this export when sensory_input is false, matching the default runtime configuration. Cell metadata includes named cell types and left/right side labels where available.</p>
-      <h2>Anatomy</h2><p>The current compact browser export does not include soma XYZ coordinates. Browser mode therefore reports anatomy unavailable instead of inventing positions. The optional Python reference path can still expose MaleCNS soma coordinates when present.</p>
+      <h2>Anatomy</h2><p>The recurrent web export itself does not carry soma XYZ coordinates, so the static build generates a separate <code>soma.bin</code> from the pinned FlyBrain <code>brain.npz</code>. The browser loads that real MaleCNS soma asset alongside the graph and never invents missing positions.</p>
       <h2>Named populations</h2><p>FLYBOX currently exposes a curated set including LC4, LPLC2, LPLC1, LC10a, LC6, LC16, LC15, ORN_DM1, ORN_DM2, SNta, DNg100, DNa02, DNp01, MDN, and descending_neuron.</p>
       <Note title="Anatomy is not dynamics"><p>The connectome and soma coordinates are structural data. Firing activity shown in FLYBOX is produced by the simulator, not an in-vivo recording of the same fly.</p></Note>
     </>
@@ -128,8 +128,8 @@ Browser Web Worker
     path: "neuroscience/brain-viewer", group: "NEUROSCIENCE", title: "3D brain viewer",
     description: "How anatomical coordinates and live simulated activity are rendered.",
     body: <>
-      <h2>Structural layer</h2><p>Browser mode does not currently receive soma XYZ coordinates from the compact FlyBrain web export, so the viewer renders no fake anatomy. The structure layer becomes available only when real coordinate metadata is supplied.</p>
-      <h2>Activity layer</h2><p>The worker tracks real simulated firing indices and named-population activity. Spatial spike glow requires real soma coordinates and remains unavailable until that metadata is added to the browser export.</p>
+      <h2>Structural layer</h2><p>The viewer loads real MaleCNS soma XYZ coordinates from the separately generated static <code>soma.bin</code> asset. Neurons without usable coordinates are omitted rather than fabricated.</p>
+      <h2>Activity layer</h2><p>The worker tracks simulated firing indices and maps currently firing neurons onto those real soma coordinates, producing the live spatial spike glow.</p>
       <h2>Viewer controls</h2><p>Use 3D, TOP, and SIDE views; drag to rotate; use the wheel to zoom; toggle SOMA, SPIKES, and GRID; or expand the inspector.</p>
       <h2>What is not rendered</h2><p>The browser loads the recurrent graph for computation, but it does not render 25 million edges, full axon/dendrite morphology, or invented soma positions. Those require a separate anatomy/morphology data path and level-of-detail renderer.</p>
     </>
@@ -188,7 +188,7 @@ Browser Web Worker
     path: "reference/api", group: "REFERENCE", title: "API reference",
     description: "The supported operations exposed by the live sandbox protocol.",
     body: <>
-      <h2>Transport</h2><p>In default browser mode, the frontend sends RPC-style messages directly to the local Web Worker. Paths mirror HTTP-style endpoints so the same UI can still target the optional server runtime during development.</p>
+      <h2>Transport</h2><p>The production frontend sends RPC-style messages directly to its local Web Worker. The HTTP-like path names are an internal compatibility convention; the current UI has no server/WebSocket transport fallback.</p>
       <h3>Simulation</h3><Code>{`POST /api/simulation/pause
 POST /api/simulation/resume
 POST /api/simulation/step

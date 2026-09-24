@@ -13,6 +13,7 @@ static host / CDN
       |     meta.bin
       |     weights.0.bin
       |     weights.1.bin
+      |     soma.bin
       |
       v
 browser
@@ -26,11 +27,11 @@ browser
             +-- checkpoints / forks / batch probes
 ```
 
-The server is not in the simulation loop. Browser mode is the default. `VITE_SIMULATION_RUNTIME=server` keeps the Python/WebSocket implementation available as a reference while parity work continues.
+The production UI is browser-only: there is no server/WebSocket transport fallback in `frontend/src/api.ts`. The Python/FastAPI code remains in the repository only as a separate reference/development implementation.
 
 ## Connectome files
 
-The browser runtime consumes FlyBrain's `export --web` format. The current upstream export contains 166,700 neurons and the MaleCNS connection graph, split into compact gzip files. Topology is preserved while signed synaptic weights are logarithmically quantized to one byte per edge for browser delivery.
+The browser runtime consumes FlyBrain's `export --web` format. The pinned manifest contains **166,700 neurons and 25,088,107 recurrent graph edges**, split into compact gzip files. Topology is preserved while signed synaptic weights are logarithmically quantized to one byte per edge for browser delivery. A separate static `soma.bin` is generated from the pinned FlyBrain `brain.npz` so the 3D viewer can use real MaleCNS soma XYZ coordinates.
 
 During development the worker defaults to a commit-pinned copy of the upstream FlyBrain web export. For production, mirror the immutable files onto the same static origin:
 
@@ -65,13 +66,7 @@ PLAY assistance is still an explicit game layer; PURE LAB removes it.
 
 The compact web export uses FlyBrain's 8-bit logarithmic weight encoding, so browser synaptic values are an approximation of the original Float32 weights. Do not describe browser results as bit-identical to the Python backend until parity tests establish the relevant tolerances.
 
-The compact metadata currently does not include MaleCNS soma XYZ positions or FlyBrain photoreceptor azimuth metadata. Consequently:
-
-- the browser runtime does not invent 3D anatomy;
-- the 3D soma viewer reports anatomy unavailable in this mode;
-- the LIGHT object is displayed to the user but is not injected into fake photoreceptors.
-
-Those can be added by extending the static export format.
+The recurrent web metadata does not include FlyBrain photoreceptor azimuth metadata. Consequently the LIGHT object is a clearly labeled PLAY orientation cue and is not injected into invented photoreceptors. Soma XYZ is handled separately: the build generates `soma.bin` from the pinned FlyBrain anatomy data, and the viewer omits neurons whose real coordinates are unavailable.
 
 ## Loading
 

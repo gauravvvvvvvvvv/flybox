@@ -963,15 +963,14 @@ challenge race
 
 # 24. API
 
-Backend:
+Runtime:
 
 - browser Web Worker runtime
 - TypedArray connectome loader/stepper
-- optional FastAPI/WebSocket reference backend
+- local RPC-style messages between the React UI and worker
+- optional Python/FastAPI code retained only as a separate reference implementation
 
-The browser sends stateful sandbox commands over the same WebSocket that owns the temporary sandbox.
-
-This removes hosted simulation compute entirely from the default production path.
+The production browser does not open a simulation WebSocket or call a hosted neural backend. This removes hosted simulation compute from the production path.
 
 The batch probe also runs locally in the browser against the shared immutable graph.
 
@@ -1112,46 +1111,36 @@ FLYBOX does not claim:
 
 Real FlyBrain uses a large connectome.
 
-Therefore FLYBOX:
+Therefore the browser runtime:
 
 - limits simultaneous full agents
-- never sends the whole 25M-edge graph to the browser
-- sends bounded firing samples
-- bounds logs
-- bounds odor objects
-- uses FlyBrain propagation rather than Python loops over all synapses
-- uses native batch support for multi-replicate scientific probes
+- downloads the compact 25,088,107-edge recurrent graph once and reuses immutable topology across agents
+- keeps per-agent neural state separate while sharing graph arrays
+- sends only bounded firing-position samples to the React UI
+- bounds logs and checkpoints
+- stores lesion masks as compact bitsets
+- runs batch probes locally against the same shared graph
 
-On Vercel the default full-agent cap is conservative.
+The current browser full-agent cap is four and is independent of Vercel compute.
 
 ---
 
 # 30. Deployment
 
-The repository includes:
+Production deployment is static Vite output:
 
 ```text
-Dockerfile.vercel
+Vercel/CDN
+├── frontend/dist
+├── connectome/brain.json
+├── connectome/meta.bin
+├── connectome/weights.*.bin
+└── connectome/soma.bin
 ```
 
-The container:
+Vercel serves files only. There is no `Dockerfile.vercel`, hosted FastAPI process, WebSocket simulation service, or server-side neural compute. The browser Web Worker owns the ephemeral sandbox and all neural stepping.
 
-1. builds the Vite frontend
-2. installs the Python backend
-3. downloads/bundles FlyBrain data at build time
-4. serves frontend + API + WebSocket from one domain
-
-Important deployment environment defaults include:
-
-```text
-FLY_DEVICE=cpu
-FLYLAB_STATIC_DIR=/app/frontend/dist
-FLYLAB_MAX_FLIES=2
-FLYLAB_MAX_SESSIONS=2
-FLYLAB_SESSION_GRACE_SECONDS=8
-```
-
-A platform recycle simply destroys the ephemeral sandbox, which matches the product model.
+The build downloads the pinned compact FlyBrain graph and generates `soma.bin`; once deployed, visitors download those immutable assets and compute locally.
 
 ---
 
@@ -1180,7 +1169,8 @@ flybox/
 │   ├── js/
 │   └── python/
 ├── examples/
-├── Dockerfile.vercel
+├── scripts/
+├── vercel.json
 └── README.md
 ```
 
