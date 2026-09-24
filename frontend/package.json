@@ -8,7 +8,9 @@
     "build": "vite build",
     "typecheck": "tsc --noEmit",
     "check": "tsc --noEmit",
-    "fetch:connectome": "node ../scripts/fetch-browser-connectome.mjs"
+    "fetch:connectome": "node ../scripts/fetch-browser-connectome.mjs",
+    "fetch:soma": "python ../scripts/export-browser-soma.py",
+    "prepare:browser": "npm run fetch:connectome && npm run fetch:soma"
   },
   "dependencies": {
     "@vitejs/plugin-react": "^4.3.4",
