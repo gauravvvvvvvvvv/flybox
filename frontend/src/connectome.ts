@@ -57,12 +57,12 @@ export interface ConnectomeInfo {
 }
 
 export type BrainSnapshot = {
-  v: Float32Array;
-  fired: Int32Array;
+  v: Float32Array | number[];
+  fired: Int32Array | number[];
   firedCount: number;
   steps: number;
   rngState: number;
-  lesionMask: Uint8Array | null;
+  lesionMask: Uint8Array | number[] | null;
 };
 
 const decoder = new TextDecoder();
@@ -376,15 +376,26 @@ export class ConnectomeBrain {
       throw new Error("Checkpoint neural state does not match this connectome");
     }
 
+    const fired =
+      snapshot.fired instanceof Int32Array
+        ? snapshot.fired
+        : Int32Array.from(snapshot.fired);
+    const lesions =
+      snapshot.lesionMask == null
+        ? null
+        : snapshot.lesionMask instanceof Uint8Array
+          ? snapshot.lesionMask
+          : Uint8Array.from(snapshot.lesionMask);
+
     this.v.set(snapshot.v);
     this.drive.fill(0);
     this.current.fill(0);
     this.fired.fill(0);
-    this.fired.set(snapshot.fired.subarray(0, snapshot.firedCount));
+    this.fired.set(fired.subarray(0, snapshot.firedCount));
     this.firedCount = snapshot.firedCount;
     this.steps = snapshot.steps;
     this.rng.state = snapshot.rngState >>> 0;
-    this.lesionMask = snapshot.lesionMask?.slice() ?? null;
+    this.lesionMask = lesions?.slice() ?? null;
   }
 
   copyStateFrom(other: ConnectomeBrain) {
