@@ -3,7 +3,7 @@ import Arena, { type ArenaTool } from "./Arena";
 import BrainView from "./BrainView";
 import HomeDocs from "./HomeDocs";
 import { closeSession, connectFrames, del, get, post } from "./api";
-import type { Frame, Metadata, WorldKind } from "./types";
+import type { Frame, Metadata, RuntimeState, WorldKind } from "./types";
 
 const populations = [
   "LC4", "LPLC2", "LPLC1", "LC10a", "ORN_DM1", "ORN_DM2",
@@ -24,6 +24,42 @@ const tools: { kind: ArenaTool; label: string }[] = [
 ];
 
 type Surface = "PLAY" | "LAB" | "BUILD" | "WEIRD";
+
+function brainLoadProgress(runtime?: RuntimeState) {
+  if (!runtime) return 1;
+  if (runtime.status === "ready") return 100;
+  if (runtime.status === "error") return 100;
+
+  const progress = (runtime.progress ?? "").toLowerCase();
+  if (progress.includes("manifest")) return 4;
+  if (progress.includes("neuron labels")) return 8;
+  if (progress.startsWith("labels")) return 10;
+
+  const mb = progress.match(/connectome\s+(\d+(?:\.\d+)?)\s*\/\s*(\d+(?:\.\d+)?)\s*mb/);
+  if (mb) {
+    const done = Number(mb[1]);
+    const total = Math.max(1, Number(mb[2]));
+    return Math.min(88, 12 + (done / total) * 76);
+  }
+
+  if (progress.includes("connectome decompressing")) return 91;
+  if (progress.includes("wiring")) return 97;
+  if (progress.includes("ready")) return 100;
+  return 6;
+}
+
+function brainLoadLabel(runtime?: RuntimeState) {
+  const progress = (runtime?.progress ?? "").toLowerCase();
+  if (!runtime) return "STARTING BROWSER LAB";
+  if (runtime.status === "error") return "COULD NOT PREPARE BRAIN";
+  if (runtime.status === "ready") return "BRAIN READY";
+  if (progress.includes("manifest")) return "CHECKING CONNECTOME";
+  if (progress.includes("label")) return "PREPARING NEURON LABELS";
+  if (progress.includes("decompress")) return "UNPACKING CONNECTOME";
+  if (progress.includes("wiring")) return "WIRING 25 MILLION CONNECTIONS";
+  if (progress.includes("connectome")) return "LOADING CONNECTOME";
+  return "PREPARING NEURAL SANDBOX";
+}
 
 export default function App() {
   const [entered, setEntered] = useState(false);
@@ -262,6 +298,39 @@ export default function App() {
           post("/api/simulation/resume").catch((e) => setError(e instanceof Error ? e.message : String(e)));
         }}
       />
+    );
+  }
+
+  if (frame?.runtime?.status !== "ready") {
+    const progress = brainLoadProgress(frame?.runtime);
+    const failed = frame?.runtime?.status === "error";
+    return (
+      <main className="brain-loading-screen" aria-live="polite">
+        <div className="brain-loading-grid" />
+        <section className="brain-loading-card">
+          <div className="brain-loading-brand">FLYBOX</div>
+          <div className="brain-loading-kicker">BROWSER-COMPUTE LAB</div>
+          <h1>{failed ? "The brain couldn't start." : "Preparing the fly brain."}</h1>
+          <p>
+            {failed
+              ? frame?.runtime?.error ?? "The connectome could not be loaded."
+              : "Everything runs on this device. No install, account, or setup required."}
+          </p>
+          {!failed && (
+            <>
+              <div className="brain-loading-track" role="progressbar" aria-valuemin={0} aria-valuemax={100} aria-valuenow={Math.round(progress)}>
+                <i style={{ width: `${progress}%` }} />
+              </div>
+              <div className="brain-loading-meta">
+                <span>{brainLoadLabel(frame?.runtime)}</span>
+                <b>{Math.round(progress)}%</b>
+              </div>
+              <small>First visit can take a little longer. Later visits reuse the browser cache.</small>
+            </>
+          )}
+          {failed && <button onClick={() => window.location.reload()}>TRY AGAIN</button>}
+        </section>
+      </main>
     );
   }
 
