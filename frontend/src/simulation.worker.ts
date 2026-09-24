@@ -461,8 +461,10 @@ function stepFly(fly: LocalFly, stepDt: number) {
       obstacleAssist = avoidance(fly, obstacle.obj, 1.8) * obstacleSense;
     }
     if (edgeSense > 0) {
-      const center = { ...world.objects[0], x: 0.5, y: 0.5 } as ArenaObject;
-      edge = attraction(fly, center, 1.6) * edgeSense;
+      const desired = Math.atan2(0.5 - fly.y, 0.5 - fly.x);
+      edge =
+        clamp(wrapAngle(desired - fly.heading) * 1.6, -2.5, 2.5) *
+        edgeSense;
     }
     search = Math.sin(t * 1.7 + fly.id.length) * 0.18;
   }
