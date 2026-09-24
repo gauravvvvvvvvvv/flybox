@@ -404,43 +404,65 @@ function ensureTrailingSlash(base: string) {
   return base.endsWith("/") ? base : `${base}/`;
 }
 
+async function fetchOne(
+  url: string,
+  onBytes: (count: number) => void,
+) {
+  const response = await fetch(url, {
+    cache: "force-cache",
+    credentials: "omit",
+  });
+  if (!response.ok || !response.body) {
+    throw new Error(`${url}: HTTP ${response.status}`);
+  }
+
+  const reader = response.body.getReader();
+  const chunks: Uint8Array[] = [];
+  let size = 0;
+
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    chunks.push(value);
+    size += value.length;
+    onBytes(value.length);
+  }
+
+  const merged = new Uint8Array(size);
+  let offset = 0;
+  for (const chunk of chunks) {
+    merged.set(chunk, offset);
+    offset += chunk.length;
+  }
+  return merged;
+}
+
 async function fetchParts(
   urls: string[],
   label: string,
   report: (text: string) => void,
   totalMb = 0,
 ) {
-  const chunks: Uint8Array[] = [];
   let downloaded = 0;
   let lastReport = 0;
-
-  for (const url of urls) {
-    const response = await fetch(url, {
-      cache: "force-cache",
-      credentials: "omit",
-    });
-    if (!response.ok || !response.body) {
-      throw new Error(`${url}: HTTP ${response.status}`);
+  const reportBytes = (count: number) => {
+    downloaded += count;
+    if (downloaded - lastReport >= 1_000_000) {
+      lastReport = downloaded;
+      report(
+        `${label} ${(downloaded / 1e6).toFixed(0)}${totalMb ? ` / ${totalMb.toFixed(0)}` : ""} MB`,
+      );
     }
+  };
 
-    const reader = response.body.getReader();
-    for (;;) {
-      const { done, value } = await reader.read();
-      if (done) break;
-      chunks.push(value);
-      downloaded += value.length;
+  // Weight parts are independent HTTP objects. Fetch them concurrently so a
+  // first visit is limited by available bandwidth rather than serial latency.
+  const parts = await Promise.all(
+    urls.map((url) => fetchOne(url, reportBytes)),
+  );
 
-      if (downloaded - lastReport >= 1_000_000) {
-        lastReport = downloaded;
-        report(
-          `${label} ${(downloaded / 1e6).toFixed(0)}${totalMb ? ` / ${totalMb.toFixed(0)}` : ""} MB`,
-        );
-      }
-    }
-  }
-
-  const blob = new Blob(chunks as BlobPart[]);
-  const first = chunks[0];
+  const blob = new Blob(parts as BlobPart[]);
+  const first = parts[0];
   const isGzip = first?.[0] === 0x1f && first?.[1] === 0x8b;
 
   if (!isGzip) return blob.arrayBuffer();
@@ -450,6 +472,7 @@ async function fetchParts(
     );
   }
 
+  report(`${label} decompressing`);
   return new Response(
     blob.stream().pipeThrough(new DecompressionStream("gzip")),
   ).arrayBuffer();
