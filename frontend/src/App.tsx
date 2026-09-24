@@ -604,7 +604,7 @@ export default function App() {
                   <p>🖐 <b>Hand</b> can grab agents or drag world objects while the simulation is live. Right-click any placed element to remove it.</p>
                   <p>⚫ <b>Loom</b> uses angular growth → LPLC2; close threats also drive LC4.</p>
                   <p>🔊 <b>Sound</b> pulses JO-A/JO-B auditory populations.</p>
-                  <p>💡 <b>Light</b> projects onto FlyBrain photoreceptor azimuths.</p>
+                  <p>💡 <b>Light</b> is a visible PLAY orientation cue. The compact browser export does not expose photoreceptor azimuth metadata, so PURE LAB does not invent a neural light input.</p>
                   <p>☠ <b>Predator</b> is draggable and can catch agents.</p>
                   <p>█ <b>Wall</b> produces SNta touch on collision.</p>
                 </div>

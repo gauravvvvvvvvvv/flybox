@@ -538,8 +538,18 @@ function publicFly(fly: LocalFly): FlyFrame {
     lesionFraction,
     ...publicState
   } = fly;
+  const visible = clone(publicState);
+  if (
+    challenge.id === "mystery" &&
+    challenge.secret_hidden &&
+    mysterySecret?.fly_id === fly.id
+  ) {
+    visible.interventions = visible.interventions.filter(
+      (item) => item.hidden !== true,
+    );
+  }
   return {
-    ...clone(publicState),
+    ...visible,
     lesion_fraction: lesionFraction,
   };
 }
@@ -937,10 +947,9 @@ function encodeSensory(
   }
 
   const soundDrive = Math.max(0, ...snapshot.sound.map((item) => item.drive));
-  if (soundDrive > 0 && neuralGroups.hearing.length) {
-    const amount = clamp(soundDrive * sensoryGain, 0, 0.8);
-    state.brain.stimulate(neuralGroups.hearing, amount);
-    display.sound = amount;
+  display.sound = clamp(soundDrive * sensoryGain, 0, 0.8);
+  if (display.sound > 0 && neuralGroups.hearing.length) {
+    state.brain.stimulate(neuralGroups.hearing, display.sound);
   }
 
   for (const pending of state.pending) {
@@ -1730,11 +1739,18 @@ function populationStatus(fly: LocalFly) {
 
   return KNOWN_POPS.map((name) => {
     const idx = neuralGroups!.populations[name];
+    const hiddenMysterySilence =
+      challenge.id === "mystery" &&
+      challenge.secret_hidden &&
+      mysterySecret?.fly_id === fly.id &&
+      mysterySecret.target === name;
     return {
       name,
       neurons: idx.length,
       firing: countIntersection(fired, idx),
-      silenced: state?.silenced.has(name) ?? false,
+      silenced: hiddenMysterySilence
+        ? false
+        : state?.silenced.has(name) ?? false,
     };
   });
 }
@@ -2220,13 +2236,11 @@ function startChallenge(id: string) {
     prime.heading = 0;
     prime.trail = [];
   } else if (id === "mystery") {
-    if (flies.length < 2) {
-      spawnFly(new URLSearchParams(), { name: "MYSTERY", body_type: "fly" });
-    }
+    removeNonPrimeFlies();
+    const mysteryPublic = forkFly("prime");
     const candidates = ["LC4", "LPLC2", "LC10a"];
     const target = candidates[Math.abs(world.seed) % candidates.length];
-    const mystery = flies.find((fly) => !fly.is_prime);
-    if (!mystery) throw new Error("Could not create mystery agent");
+    const mystery = findFly(mysteryPublic.id);
     mystery.name = "MYSTERY";
     const mysteryState = neural.get(mystery.id);
     const mysteryPopulation = neuralGroups?.populations[target];
