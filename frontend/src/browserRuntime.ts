@@ -68,6 +68,11 @@ export function connectBrowserFrames(
   return () => {
     frameListeners.delete(onFrame);
     errorListeners.delete(onError);
+    try {
+      worker?.postMessage({ type: "unsubscribe" });
+    } catch {
+      // The page may already be tearing the worker down.
+    }
   };
 }
 

@@ -116,6 +116,7 @@ export default function App() {
   }, []);
 
   useEffect(() => {
+    if (!entered) return;
     return connectFrames(
       (data) => {
         setFrame(data);
@@ -123,7 +124,7 @@ export default function App() {
       },
       (message) => setError(message),
     );
-  }, []);
+  }, [entered]);
 
   useEffect(() => {
     if (!entered) return;

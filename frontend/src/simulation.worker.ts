@@ -100,6 +100,7 @@ type RpcRequest = {
 type InboundMessage =
   | RpcRequest
   | { type: "subscribe" }
+  | { type: "unsubscribe" }
   | { type: "close" };
 
 type SensoryItem = {
@@ -2911,6 +2912,11 @@ scope.onmessage = async (event: MessageEvent<InboundMessage>) => {
   if (message.type === "subscribe") {
     frameSubscribers += 1;
     scope.postMessage(framePayload());
+    return;
+  }
+
+  if (message.type === "unsubscribe") {
+    frameSubscribers = Math.max(0, frameSubscribers - 1);
     return;
   }
 
