@@ -904,3 +904,57 @@ aside { padding: 18px; background: #0b0e0c; overflow-y: auto; min-height: 0; }
   line-height: 1.5;
 }
 .brain-loading-card button { margin-top: 24px; }
+
+
+/* Keep high-frequency live state updates from shifting the sidebar layout. */
+.hero-state { overflow:hidden; }
+.hero-state span {
+  max-width:calc(100% - 88px);
+  min-height:28px;
+  line-height:1.05;
+  white-space:nowrap;
+  overflow:hidden;
+  text-overflow:ellipsis;
+}
+.why-card {
+  height:112px;
+  min-height:112px;
+  max-height:112px;
+  overflow:hidden;
+}
+.why-card strong {
+  min-height:32px;
+  max-height:32px;
+  line-height:16px;
+  overflow:hidden;
+  display:-webkit-box;
+  -webkit-line-clamp:2;
+  -webkit-box-orient:vertical;
+}
+.why-card p {
+  min-height:30px;
+  max-height:30px;
+  overflow:hidden;
+  display:-webkit-box;
+  -webkit-line-clamp:2;
+  -webkit-box-orient:vertical;
+}
+
+/* Brain inspector toolbar must stay inside its card at narrow sidebar widths. */
+.brain-view-controls.brain-toolbar-pro {
+  flex-wrap:wrap;
+  overflow:hidden;
+  align-items:center;
+}
+.brain-toolbar-pro .brain-segment,
+.brain-toolbar-pro .brain-layer-toggles {
+  flex:0 1 auto;
+  min-width:0;
+  flex-wrap:wrap;
+}
+.brain-toolbar-pro > span {
+  display:none;
+}
+.brain-toolbar-pro > button {
+  flex:0 0 auto;
+}
