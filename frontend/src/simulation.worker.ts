@@ -254,6 +254,9 @@ const UPSTREAM_CONNECTOME =
 const CONNECTOME_BASE = String(
   import.meta.env.VITE_CONNECTOME_BASE ?? UPSTREAM_CONNECTOME,
 );
+const SOMA_BASE = String(
+  import.meta.env.VITE_SOMA_BASE ?? "/connectome/",
+);
 
 let nextObject = 1;
 let nextFly = 1;
@@ -651,7 +654,7 @@ async function bootConnectome() {
   emitFrame();
 
   try {
-    const somaPromise = loadSoma(CONNECTOME_BASE);
+    const somaPromise = loadSoma(SOMA_BASE);
     const loaded = await loadConnectome(CONNECTOME_BASE, (progress) => {
       runtimeProgress = progress;
       emitFrame();
@@ -691,7 +694,7 @@ async function bootConnectome() {
     } else {
       addEvent(
         "system",
-        "3D anatomy asset not found; run npm run fetch:soma and use VITE_CONNECTOME_BASE=/connectome/.",
+        "3D anatomy asset not found at /connectome/soma.bin; the neural simulation will continue without spatial anatomy.",
       );
     }
 
