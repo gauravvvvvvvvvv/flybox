@@ -249,7 +249,7 @@ export default function BrainView({ fly }: { fly: FlyFrame | undefined }) {
       <div className="brain-legend">
         <span><i className="brain-dot brain-dot-static" /> MaleCNS soma sample</span>
         <span><i className="brain-dot brain-dot-live" /> currently firing mapped neuron</span>
-        <span className="brain-legend-note">{RUNTIME_MODE === "browser" ? "25.6M-edge graph browser port in progress" : "full 25.6M-edge graph stays on server"}</span>
+        <span className="brain-legend-note">{RUNTIME_MODE === "browser" ? "real MaleCNS graph · FlyBrain web-quantized weights" : "full 25.6M-edge graph stays on server"}</span>
       </div>
 
       <p>
