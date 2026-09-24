@@ -25,6 +25,14 @@ const tools: { kind: ArenaTool; label: string }[] = [
 
 type Surface = "PLAY" | "LAB" | "BUILD" | "WEIRD";
 
+function stateFontSize(state?: string) {
+  const length = state?.length ?? 0;
+  if (length > 18) return 14;
+  if (length > 13) return 16;
+  if (length > 9) return 19;
+  return 23;
+}
+
 function brainLoadProgress(runtime?: RuntimeState) {
   if (!runtime) return 1;
   if (runtime.status === "ready") return 100;
@@ -407,7 +415,7 @@ export default function App() {
           {surface === "PLAY" && (
             <>
               <div className="hero-state">
-                <span>{fly?.state ?? "…"}</span>
+                <span style={{ fontSize: stateFontSize(fly?.state) }}>{fly?.state ?? "…"}</span>
                 <strong>{fly?.energy.toFixed(0) ?? "—"}%</strong>
                 <small>ENERGY</small>
               </div>
@@ -684,50 +692,80 @@ function AgentHeader({ fly, nameDraft, setNameDraft, onRename, onSpawn, onFork }
 }
 
 function WhyCard({ fly }: any) {
-  if (!fly) return null;
-  let title = "It is deciding what to do.";
-  let detail = "The connectome is running; PLAY may also add the labeled locomotion assist so the embodied agent can explore.";
+  const [display, setDisplay] = useState({
+    title: "It is deciding what to do.",
+    detail: "The connectome is running; PLAY may also add the labeled locomotion assist so the embodied agent can explore.",
+  });
+  const pending = useRef<{ title: string; detail: string } | null>(null);
+  const lastSwap = useRef(0);
 
-  if (!fly.alive) {
-    title = fly.state === "CAUGHT" ? "The predator caught it." : "It ran out of energy.";
-    detail = "Death/energy are game mechanics; the neural state is still reported separately.";
-  } else if (fly.state === "FEEDING") {
-    title = "It found food and stopped to eat.";
-    detail = "Food creates an ORN_DM1/ORN_DM2 odor input. Feeding and energy gain are game mechanics.";
-  } else if (fly.state === "ESCAPING") {
-    title = "Its escape channel fired strongly.";
-    detail = "Looming/threat encoders can drive LPLC2/LC4; the displayed escape readout is DNp01.";
-  } else if (fly.state === "POSSESSED") {
-    title = "You are driving the body.";
-    detail = "WASD adds an explicit manual body command while the connectome keeps receiving sensory input.";
-  } else if (Math.abs(fly.assists?.obstacle ?? 0) > 0.10) {
-    title = "It sees a wall in its path and is turning away.";
-    detail = "Wall avoidance is a PLAY reflex before collision; physical contact also produces an SNta touch input and a stronger tactile turn.";
-  } else if (Math.abs(fly.assists?.edge ?? 0) > 0.10) {
-    title = "It is turning back into the arena.";
-    detail = "PLAY treats the box edge like a wall before impact. If it still reaches the boundary, the body reflects and continues instead of getting pinned.";
-  } else if (Math.abs(fly.assists?.target ?? 0) > 0.08) {
-    title = "It is steering toward the target.";
-    detail = "TARGET/GOAL steering is an explicit PLAY assist. The target also drives the experimental LC10a sensory encoder; PURE LAB removes the body assist.";
-  } else if (Math.abs(fly.assists?.orient ?? 0) > 0.05) {
-    title = "It is orienting toward a sound or light.";
-    detail = "This visible orientation is a PLAY game assist; the sensory stimulus is still injected through its separately labeled neural encoder.";
-  } else if ((fly.senses?.food_odor ?? 0) > 0.15) {
-    title = "It can smell nearby food.";
-    detail = `Food odor input is ${fly.senses.food_odor.toFixed(2)}. In PLAY, hunger makes that cue more influential on the game locomotion assist.`;
-  } else if ((fly.senses?.loom ?? 0) > 0.08) {
-    title = "Something is expanding in its view.";
-    detail = "Angular growth drives the experimental LPLC2 looming encoder; downstream connectome activity remains simulated FlyBrain output.";
-  } else if (fly.controller === "lab" && Math.abs(fly.speed) < 0.01) {
-    title = "It is sitting still — and that is valid.";
-    detail = "LAB removes the locomotion assist. This simplified spiking connectome often does not produce a strong DNg100 walking command from ordinary sensory input.";
-  }
+  const next = useMemo(() => {
+    if (!fly) return null;
+
+    let title = "It is deciding what to do.";
+    let detail = "The connectome is running; PLAY may also add the labeled locomotion assist so the embodied agent can explore.";
+
+    if (!fly.alive) {
+      title = fly.state === "CAUGHT" ? "The predator caught it." : "It ran out of energy.";
+      detail = "Death/energy are game mechanics; the neural state is still reported separately.";
+    } else if (fly.state === "FEEDING") {
+      title = "It found food and stopped to eat.";
+      detail = "Food creates an ORN_DM1/ORN_DM2 odor input. Feeding and energy gain are game mechanics.";
+    } else if (fly.state === "ESCAPING") {
+      title = "Its escape channel fired strongly.";
+      detail = "Looming/threat encoders can drive LPLC2/LC4; the displayed escape readout is DNp01.";
+    } else if (fly.state === "POSSESSED") {
+      title = "You are driving the body.";
+      detail = "WASD adds an explicit manual body command while the connectome keeps receiving sensory input.";
+    } else if (Math.abs(fly.assists?.obstacle ?? 0) > 0.10) {
+      title = "It sees a wall in its path and is turning away.";
+      detail = "Wall avoidance is a PLAY reflex before collision; physical contact also produces an SNta touch input and a stronger tactile turn.";
+    } else if (Math.abs(fly.assists?.edge ?? 0) > 0.10) {
+      title = "It is turning back into the arena.";
+      detail = "PLAY treats the box edge like a wall before impact. If it still reaches the boundary, the body reflects and continues instead of getting pinned.";
+    } else if (Math.abs(fly.assists?.target ?? 0) > 0.08) {
+      title = "It is steering toward the target.";
+      detail = "TARGET/GOAL steering is an explicit PLAY assist. The target also drives the experimental LC10a sensory encoder; PURE LAB removes the body assist.";
+    } else if (Math.abs(fly.assists?.orient ?? 0) > 0.05) {
+      title = "It is orienting toward a sound or light.";
+      detail = "This visible orientation is a PLAY game assist; the sensory stimulus is still injected through its separately labeled neural encoder.";
+    } else if ((fly.senses?.food_odor ?? 0) > 0.15) {
+      title = "It can smell nearby food.";
+      detail = `Food odor input is ${fly.senses.food_odor.toFixed(2)}. In PLAY, hunger makes that cue more influential on the game locomotion assist.`;
+    } else if ((fly.senses?.loom ?? 0) > 0.08) {
+      title = "Something is expanding in its view.";
+      detail = "Angular growth drives the experimental LPLC2 looming encoder; downstream connectome activity remains simulated FlyBrain output.";
+    } else if (fly.controller === "lab" && Math.abs(fly.speed) < 0.01) {
+      title = "It is sitting still — and that is valid.";
+      detail = "LAB removes the locomotion assist. This simplified spiking connectome often does not produce a strong DNg100 walking command from ordinary sensory input.";
+    }
+
+    return { title, detail };
+  }, [fly?.alive, fly?.state, fly?.controller, fly?.speed, fly?.assists?.obstacle, fly?.assists?.edge, fly?.assists?.target, fly?.assists?.orient, fly?.senses?.food_odor, fly?.senses?.loom]);
+
+  useEffect(() => {
+    if (!next) return;
+    pending.current = next;
+
+    const elapsed = performance.now() - lastSwap.current;
+    const wait = Math.max(0, 850 - elapsed);
+    const timer = window.setTimeout(() => {
+      if (!pending.current) return;
+      setDisplay(pending.current);
+      pending.current = null;
+      lastSwap.current = performance.now();
+    }, wait);
+
+    return () => window.clearTimeout(timer);
+  }, [next?.title, next?.detail]);
+
+  if (!fly) return null;
 
   return (
     <section className="why-card">
-      <span>WHY?</span>
-      <strong>{title}</strong>
-      <p>{detail}</p>
+      <span>WHAT IS IT DOING?</span>
+      <strong>{display.title}</strong>
+      <p>{display.detail}</p>
     </section>
   );
 }
