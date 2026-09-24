@@ -4,12 +4,14 @@ FLYBOX is open-source software, but it depends on third-party software and scien
 
 ## FlyBrain
 
-FLYBOX uses `flybrain==0.1.0` for connectome-backed neural simulation.
+FLYBOX uses `flybrain==0.1.0` for the Python reference/backend simulation and adapts the upstream FlyBrain browser connectome loader/stepper for client-side simulation.
 
 Upstream project:
-https://github.com/snedea/flybrain
+https://github.com/alextitonis/fly.ai
 
 Upstream software license: MIT License.
+
+The browser runtime consumes FlyBrain's commit-pinned `export --web` connectome format. The web format preserves graph topology and uses an 8-bit logarithmic encoding for signed synaptic weights.
 
 ## MaleCNS connectome data
 
