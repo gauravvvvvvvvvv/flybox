@@ -33,6 +33,13 @@ function stateFontSize(state?: string) {
   return 23;
 }
 
+function whyDetailFontSize(text: string) {
+  if (text.length > 180) return 8;
+  if (text.length > 140) return 8.5;
+  if (text.length > 105) return 9;
+  return 10;
+}
+
 function brainLoadProgress(runtime?: RuntimeState) {
   if (!runtime) return 1;
   if (runtime.status === "ready") return 100;
@@ -765,7 +772,7 @@ function WhyCard({ fly }: any) {
     <section className="why-card">
       <span>WHAT IS IT DOING?</span>
       <strong>{display.title}</strong>
-      <p>{display.detail}</p>
+      <p style={{ fontSize: whyDetailFontSize(display.detail) }}>{display.detail}</p>
     </section>
   );
 }
