@@ -6,24 +6,52 @@ import type {
   Metadata,
   WorldKind,
 } from "./types";
+import {
+  ConnectomeBrain,
+  cells,
+  cellsWithPrefix,
+  loadConnectome,
+  type BrainSnapshot,
+  type ConnectomeMeta,
+  type ConnectomeWeights,
+} from "./connectome";
 
 type BodyType = FlyFrame["body_type"];
 type Controller = FlyFrame["controller"];
+type Side = "L" | "R";
 
 type LocalFly = FlyFrame & {
+  seed: number;
   sensoryGain: number;
   manualTurn: number;
   manualThrottle: number;
   manualUntil: number;
+  touchSide: Side | null;
+  previousOdor: number;
+  lastEscape: number;
   silenced: string[];
   lesionFraction: number;
 };
 
-type Checkpoint = {
-  id: string;
-  label: string;
-  t: number;
-  snapshot: Snapshot;
+type NeuralState = {
+  brain: ConnectomeBrain;
+  previousFired: Int32Array;
+  dnTrace: number;
+  motorSmooth: Record<string, number>;
+  previousSize: Record<string, number>;
+  pending: Array<{ idx: Int32Array; amount: number }>;
+  silenced: Set<string>;
+  blocked: Uint8Array | null;
+};
+
+type NeuralSnapshot = {
+  brain: BrainSnapshot;
+  previousFired: Int32Array;
+  dnTrace: number;
+  motorSmooth: Record<string, number>;
+  previousSize: Record<string, number>;
+  pending: Array<{ idx: Int32Array; amount: number }>;
+  silenced: string[];
 };
 
 type Snapshot = {
@@ -36,6 +64,14 @@ type Snapshot = {
   couplings: Frame["couplings"];
   achievements: Frame["achievements"];
   challenge: ChallengeState;
+  neural: Record<string, NeuralSnapshot>;
+};
+
+type Checkpoint = {
+  id: string;
+  label: string;
+  t: number;
+  snapshot: Snapshot;
 };
 
 type RpcRequest = {
@@ -51,17 +87,69 @@ type InboundMessage =
   | { type: "subscribe" }
   | { type: "close" };
 
+type SensoryItem = {
+  object: ArenaObject;
+  distance: number;
+  bearing: number;
+  angularSize: number;
+  drive: number;
+  clearance?: number;
+};
+
+type SensorySnapshot = {
+  visual: SensoryItem[];
+  food: SensoryItem[];
+  sound: SensoryItem[];
+  obstacles: SensoryItem[];
+};
+
+type NeuralGroups = {
+  populations: Record<string, Int32Array>;
+  orn: Int32Array;
+  hearing: Int32Array;
+  visual: {
+    loom: Record<Side, Int32Array>;
+    threat: Record<Side, Int32Array>;
+    small: Record<Side, Int32Array>;
+    target: Record<Side, Int32Array>;
+  };
+  touch: Record<Side, Int32Array>;
+  motor: Record<string, Int32Array>;
+  dn: Int32Array;
+};
+
 const scope = globalThis as unknown as {
   postMessage: (message: unknown) => void;
   onmessage: ((event: MessageEvent<InboundMessage>) => void) | null;
   close?: () => void;
 };
 
-const POPULATIONS: Record<string, number> = {
+const KNOWN_POPS = [
+  "LC4",
+  "LPLC2",
+  "LPLC1",
+  "LC10a",
+  "LC6",
+  "LC16",
+  "LC15",
+  "ORN_DM1",
+  "ORN_DM2",
+  "SNta",
+  "DNg100",
+  "DNa02",
+  "DNp01",
+  "MDN",
+  "descending_neuron",
+] as const;
+
+const FALLBACK_POPULATIONS: Record<string, number> = {
   LC4: 126,
   LPLC2: 185,
   LPLC1: 170,
   LC10a: 275,
+  LC6: 124,
+  LC16: 182,
+  LC15: 126,
   ORN_DM1: 80,
   ORN_DM2: 80,
   SNta: 120,
@@ -147,10 +235,25 @@ const BODIES: BodyType[] = [
   "synth",
 ];
 
+const BODY_SPEED: Record<BodyType, number> = {
+  fly: 1,
+  car: 1.45,
+  bot: 0.8,
+  drone: 1.3,
+  walker: 0.65,
+  ship: 1.7,
+  synth: 0,
+};
+
+const EXPECTED_NEURONS = 166_700;
+const EXPECTED_SYNAPSES = 25_582_938;
 const DT = 0.02;
-const NEURONS = 166_700;
-const SYNAPSES = 25_582_938;
-const MAX_FLIES = 8;
+const MAX_FLIES = 4;
+const UPSTREAM_CONNECTOME =
+  "https://raw.githubusercontent.com/alextitonis/fly.ai/03358c075000af5379e405b244dd31f1a0fd1401/world/public/connectome/";
+const CONNECTOME_BASE = String(
+  import.meta.env.VITE_CONNECTOME_BASE ?? UPSTREAM_CONNECTOME,
+);
 
 let nextObject = 1;
 let nextFly = 1;
@@ -160,16 +263,32 @@ let checkpoints: Checkpoint[] = [];
 
 let t = 0;
 let running = false;
+let resumeWhenReady = false;
 let speed = 1;
+let speedAccumulator = 0;
+
+let connectomeMeta: ConnectomeMeta | null = null;
+let connectomeWeights: ConnectomeWeights | null = null;
+let neuralGroups: NeuralGroups | null = null;
+let runtimeStatus: "loading" | "ready" | "error" = "loading";
+let runtimeProgress = "waiting";
+let runtimeError: string | null = null;
+let runtimeWeightsMb = 0;
+
 let world: Frame["world"] = makeWorld(64);
-let flies: LocalFly[] = [makeFly("prime", "PRIME", true, "fly")];
+let flies: LocalFly[] = [makeFly("prime", "PRIME", true, "fly", 64)];
 let events: Frame["events"] = [
-  { t: 0, kind: "system", message: "Browser simulation worker ready." },
+  {
+    t: 0,
+    kind: "system",
+    message: "Browser worker started; loading the real MaleCNS connectome.",
+  },
 ];
 let couplings: Frame["couplings"] = [];
 let achievements: Frame["achievements"] = [];
 let challenge: ChallengeState = challengeState("sandbox");
 let mysteryRevealed = false;
+const neural = new Map<string, NeuralState>();
 
 function clone<T>(value: T): T {
   return structuredClone(value);
@@ -185,6 +304,15 @@ function wrapAngle(value: number) {
   return value;
 }
 
+function hashString(value: string) {
+  let hash = 2166136261 >>> 0;
+  for (let i = 0; i < value.length; i++) {
+    hash ^= value.charCodeAt(i);
+    hash = Math.imul(hash, 16777619);
+  }
+  return hash >>> 0;
+}
+
 function uid(prefix: string, counter: number) {
   return `${prefix}-${counter.toString(36)}`;
 }
@@ -195,7 +323,32 @@ function makeWorld(seed: number): Frame["world"] {
     daylight: 1,
     wind_x: 0,
     wind_y: 0,
-    objects: [],
+    objects: [
+      {
+        id: uid("obj", nextObject++),
+        kind: "food",
+        x: 0.78,
+        y: 0.28,
+        intensity: 0.9,
+        radius: 0.027,
+        amount: 1,
+        vx: 0,
+        vy: 0,
+        label: "fruit",
+      },
+      {
+        id: uid("obj", nextObject++),
+        kind: "stimulus",
+        x: 0.2,
+        y: 0.72,
+        intensity: 0.8,
+        radius: 0.035,
+        amount: 1,
+        vx: 0,
+        vy: 0,
+        label: "target",
+      },
+    ],
   };
 }
 
@@ -204,6 +357,7 @@ function makeFly(
   name: string,
   isPrime: boolean,
   bodyType: BodyType,
+  seed: number,
 ): LocalFly {
   const offset = isPrime ? 0 : ((nextFly % 5) - 2) * 0.025;
   return {
@@ -212,14 +366,14 @@ function makeFly(
     is_prime: isPrime,
     body_type: bodyType,
     controller: "play",
-    state: "EXPLORING",
+    state: "IDLE",
     alive: true,
     x: clamp(0.5 + offset, 0.08, 0.92),
     y: clamp(0.5 - offset, 0.08, 0.92),
-    heading: -Math.PI / 2,
-    speed: 0.04,
-    energy: 100,
-    hunger: 0,
+    heading: 0,
+    speed: 0,
+    energy: 72,
+    hunger: 0.28,
     food_eaten: 0,
     escape_events: 0,
     fired_count: 0,
@@ -228,44 +382,25 @@ function makeFly(
     firing_jaccard_distance: 0,
     dn_activity: 0,
     dn_fired: 0,
-    motor: {
-      forward: 0,
-      steer_L: 0,
-      steer_R: 0,
-      escape: 0,
-      backward: 0,
-    },
-    senses: {
-      food_odor: 0,
-      target: 0,
-      obstacle: 0,
-      loom: 0,
-      threat: 0,
-      sound: 0,
-      touch: 0,
-      light: 0,
-    },
-    assists: {
-      forage: 0,
-      target: 0,
-      orient: 0,
-      avoid: 0,
-      obstacle: 0,
-      edge: 0,
-      search: 0,
-    },
+    motor: {},
+    senses: {},
+    assists: {},
     trail: [],
     sampled_fired: [],
     brain_view: {
-      kind: "client-worker-placeholder",
+      kind: "unavailable",
       mapped: 0,
       firing_positions: [],
     },
     interventions: [],
+    seed,
     sensoryGain: 1,
     manualTurn: 0,
     manualThrottle: 0,
-    manualUntil: 0,
+    manualUntil: -1,
+    touchSide: null,
+    previousOdor: 0,
+    lastEscape: 0,
     silenced: [],
     lesionFraction: 0,
   };
@@ -273,10 +408,14 @@ function makeFly(
 
 function publicFly(fly: LocalFly): FlyFrame {
   const {
+    seed: _seed,
     sensoryGain: _sensoryGain,
     manualTurn: _manualTurn,
     manualThrottle: _manualThrottle,
     manualUntil: _manualUntil,
+    touchSide: _touchSide,
+    previousOdor: _previousOdor,
+    lastEscape: _lastEscape,
     silenced: _silenced,
     lesionFraction: _lesionFraction,
     ...publicState
@@ -303,301 +442,9 @@ function challengeState(id: string): ChallengeState {
   };
 }
 
-function metadata(): Metadata {
-  return {
-    neurons: NEURONS,
-    synapses: SYNAPSES,
-    dt: DT,
-    max_flies: MAX_FLIES,
-    mock: true,
-    bodies: BODIES,
-    challenges: CHALLENGES,
-    provenance: {
-      graph: {
-        label: "CLIENT RUNTIME FOUNDATION",
-        description:
-          "The sandbox now runs inside a browser Web Worker. The real FlyBrain graph loader is the next migration stage.",
-      },
-      behavior: {
-        label: "TEMPORARY COMPATIBILITY MODEL",
-        description:
-          "This branch keeps the UI interactive while the 25.6M-edge FlyBrain stepper is moved from Python to browser compute.",
-      },
-    },
-    sensory_provenance: {},
-    motor_provenance: {},
-    motor_mapping:
-      "Compatibility mapping only on this migration branch; real DN readout port is pending.",
-  };
-}
-
 function addEvent(kind: string, message: string) {
   events.push({ t, kind, message });
   if (events.length > 160) events = events.slice(-160);
-}
-
-function objectDistance(fly: LocalFly, obj: ArenaObject) {
-  return Math.hypot(fly.x - obj.x, fly.y - obj.y);
-}
-
-function nearest(
-  fly: LocalFly,
-  kinds: WorldKind[],
-): { obj: ArenaObject; distance: number } | null {
-  let winner: { obj: ArenaObject; distance: number } | null = null;
-  for (const obj of world.objects) {
-    if (!kinds.includes(obj.kind)) continue;
-    const distance = objectDistance(fly, obj);
-    if (!winner || distance < winner.distance) winner = { obj, distance };
-  }
-  return winner;
-}
-
-function attraction(fly: LocalFly, obj: ArenaObject, scale: number) {
-  const desired = Math.atan2(obj.y - fly.y, obj.x - fly.x);
-  return clamp(wrapAngle(desired - fly.heading) * scale, -2.5, 2.5);
-}
-
-function avoidance(fly: LocalFly, obj: ArenaObject, scale: number) {
-  const desired = Math.atan2(fly.y - obj.y, fly.x - obj.x);
-  return clamp(wrapAngle(desired - fly.heading) * scale, -3, 3);
-}
-
-function advance(stepDt: number) {
-  t += stepDt;
-  challenge.elapsed = Math.max(0, t - challenge.started);
-
-  for (const obj of world.objects) {
-    if (!obj.vx && !obj.vy) continue;
-    obj.x += obj.vx * stepDt;
-    obj.y += obj.vy * stepDt;
-    if (obj.x < obj.radius || obj.x > 1 - obj.radius) {
-      obj.vx *= -1;
-      obj.x = clamp(obj.x, obj.radius, 1 - obj.radius);
-    }
-    if (obj.y < obj.radius || obj.y > 1 - obj.radius) {
-      obj.vy *= -1;
-      obj.y = clamp(obj.y, obj.radius, 1 - obj.radius);
-    }
-  }
-
-  for (const fly of flies) stepFly(fly, stepDt);
-  evaluateChallenge();
-  updateComparisons();
-}
-
-function stepFly(fly: LocalFly, stepDt: number) {
-  if (!fly.alive) return;
-
-  const food = nearest(fly, ["food", "odor"]);
-  const threat = nearest(fly, ["predator", "loom"]);
-  const obstacle = nearest(fly, ["obstacle"]);
-  const target = nearest(fly, ["stimulus", "goal"]);
-  const sound = nearest(fly, ["sound"]);
-  const light = nearest(fly, ["light"]);
-
-  const foodSense = food
-    ? clamp((food.obj.intensity * Math.max(0.1, food.obj.amount)) / (0.16 + food.distance * food.distance * 8))
-    : 0;
-  const threatSense = threat
-    ? clamp(threat.obj.intensity / (0.2 + threat.distance * 3))
-    : 0;
-  const obstacleSense = obstacle
-    ? clamp(1 - Math.max(0, obstacle.distance - obstacle.obj.radius) / 0.22)
-    : 0;
-  const targetSense = target
-    ? clamp(target.obj.intensity / (0.35 + target.distance * 2.2))
-    : 0;
-  const soundSense = sound
-    ? clamp(sound.obj.intensity / (0.3 + sound.distance * 2.8))
-    : 0;
-  const lightSense = light
-    ? clamp((light.obj.intensity * world.daylight) / (0.4 + light.distance * 2))
-    : 0;
-
-  const touch =
-    obstacle && obstacle.distance < obstacle.obj.radius + 0.024 ? 1 : 0;
-
-  fly.senses = {
-    food_odor: foodSense * fly.sensoryGain,
-    target: targetSense * fly.sensoryGain,
-    obstacle: obstacleSense * fly.sensoryGain,
-    loom: threat?.obj.kind === "loom" ? threatSense * fly.sensoryGain : 0,
-    threat: threatSense * fly.sensoryGain,
-    sound: soundSense * fly.sensoryGain,
-    touch,
-    light: lightSense * fly.sensoryGain,
-  };
-
-  const edgeX = Math.min(fly.x, 1 - fly.x);
-  const edgeY = Math.min(fly.y, 1 - fly.y);
-  const edgeSense = clamp((0.12 - Math.min(edgeX, edgeY)) / 0.12);
-
-  let forage = 0;
-  let targetAssist = 0;
-  let orient = 0;
-  let avoid = 0;
-  let obstacleAssist = 0;
-  let edge = 0;
-  let search = 0;
-
-  if (fly.controller === "play") {
-    if (food?.obj.kind === "food" && foodSense > 0.02) {
-      forage = attraction(fly, food.obj, 0.9) * foodSense;
-    }
-    if (target && targetSense > 0.03) {
-      targetAssist = attraction(fly, target.obj, 0.7) * targetSense;
-    }
-    if (sound && soundSense > 0.03) {
-      orient += attraction(fly, sound.obj, 0.35) * soundSense;
-    }
-    if (light && lightSense > 0.03) {
-      orient += attraction(fly, light.obj, 0.25) * lightSense;
-    }
-    if (threat && threatSense > 0.04) {
-      avoid = avoidance(fly, threat.obj, 1.5) * threatSense;
-    }
-    if (obstacle && obstacleSense > 0.04) {
-      obstacleAssist = avoidance(fly, obstacle.obj, 1.8) * obstacleSense;
-    }
-    if (edgeSense > 0) {
-      const desired = Math.atan2(0.5 - fly.y, 0.5 - fly.x);
-      edge =
-        clamp(wrapAngle(desired - fly.heading) * 1.6, -2.5, 2.5) *
-        edgeSense;
-    }
-    search = Math.sin(t * 1.7 + fly.id.length) * 0.18;
-  }
-
-  fly.assists = {
-    forage,
-    target: targetAssist,
-    orient,
-    avoid,
-    obstacle: obstacleAssist,
-    edge,
-    search,
-  };
-
-  let turn = forage + targetAssist + orient + avoid + obstacleAssist + edge + search;
-  let throttle = 0.65 + foodSense * 0.15 + targetSense * 0.1;
-
-  if (t < fly.manualUntil) {
-    turn += fly.manualTurn * 1.9;
-    throttle += fly.manualThrottle * 0.75;
-    fly.state = "POSSESSED";
-  } else if (threatSense > 0.36) {
-    fly.state = "ESCAPING";
-  } else {
-    fly.state = "EXPLORING";
-  }
-
-  const escape = threatSense * 20;
-  const steerMagnitude = Math.min(20, Math.abs(turn) * 8);
-  fly.motor = {
-    forward: Math.max(0, throttle * 10),
-    steer_L: turn < 0 ? steerMagnitude : 0,
-    steer_R: turn > 0 ? steerMagnitude : 0,
-    escape,
-    backward: fly.manualThrottle < -0.2 && t < fly.manualUntil
-      ? Math.abs(fly.manualThrottle) * 10
-      : 0,
-  };
-
-  fly.heading = wrapAngle(fly.heading + turn * stepDt * 2.8);
-  fly.speed = clamp(0.03 + Math.max(0, throttle) * 0.075 + threatSense * 0.04, 0, 0.18);
-
-  const oldX = fly.x;
-  const oldY = fly.y;
-  fly.x += Math.cos(fly.heading) * fly.speed * stepDt;
-  fly.y += Math.sin(fly.heading) * fly.speed * stepDt;
-
-  if (fly.x < 0.02 || fly.x > 0.98) {
-    fly.x = clamp(fly.x, 0.022, 0.978);
-    fly.heading = Math.PI - fly.heading;
-  }
-  if (fly.y < 0.02 || fly.y > 0.98) {
-    fly.y = clamp(fly.y, 0.022, 0.978);
-    fly.heading = -fly.heading;
-  }
-  fly.heading = wrapAngle(fly.heading);
-
-  if (obstacle && objectDistance(fly, obstacle.obj) < obstacle.obj.radius + 0.018) {
-    fly.x = oldX;
-    fly.y = oldY;
-    fly.heading = wrapAngle(fly.heading + (turn >= 0 ? -1 : 1) * 0.9);
-    fly.senses.touch = 1;
-  }
-
-  const edible = world.objects.find(
-    (obj) =>
-      obj.kind === "food" &&
-      Math.hypot(fly.x - obj.x, fly.y - obj.y) < obj.radius + 0.028,
-  );
-  if (edible) {
-    const bite = Math.min(edible.amount, 0.004);
-    edible.amount -= bite;
-    fly.energy = clamp(fly.energy + bite * 140, 0, 100);
-    fly.food_eaten += bite;
-    fly.state = "FEEDING";
-    if (edible.amount <= 0.00001) {
-      world.objects = world.objects.filter((obj) => obj.id !== edible.id);
-      addEvent("food", `${fly.name} finished a fruit.`);
-      unlockAchievement("first_bite", "FIRST BITE", "A fly ate food.");
-    }
-  }
-
-  const predator = world.objects.find(
-    (obj) =>
-      obj.kind === "predator" &&
-      Math.hypot(fly.x - obj.x, fly.y - obj.y) < obj.radius + 0.02,
-  );
-  if (predator) {
-    fly.alive = false;
-    fly.state = "CAUGHT";
-    addEvent("danger", `${fly.name} was caught by the predator.`);
-  }
-
-  fly.energy = clamp(fly.energy - stepDt * (0.12 + fly.speed * 0.5), 0, 100);
-  fly.hunger = clamp(100 - fly.energy, 0, 100);
-  if (fly.energy <= 0) {
-    fly.alive = false;
-    fly.state = "EXHAUSTED";
-  }
-
-  if (threatSense > 0.58) fly.escape_events += 1;
-
-  const activity =
-    foodSense + threatSense + obstacleSense + targetSense + soundSense + lightSense;
-  const lesionPenalty = 1 - clamp(fly.lesionFraction, 0, 0.9);
-  fly.fired_count = Math.round((7800 + activity * 2800) * lesionPenalty);
-  fly.firing_fraction = fly.fired_count / NEURONS;
-  fly.newly_firing = Math.round(400 + activity * 900);
-  fly.firing_jaccard_distance = clamp(activity * 0.08 + fly.lesionFraction * 0.35);
-  fly.dn_activity = clamp(
-    (fly.motor.forward + fly.motor.steer_L + fly.motor.steer_R + escape) / 130,
-    0,
-    1,
-  );
-  fly.dn_fired = Math.round(fly.dn_activity * POPULATIONS.descending_neuron);
-  fly.sampled_fired = sampleNeuronIds(fly, activity);
-
-  if (t - (fly.trail.at(-1)?.t ?? -Infinity) >= 0.08) {
-    fly.trail.push({ t, x: fly.x, y: fly.y });
-    if (fly.trail.length > 240) fly.trail = fly.trail.slice(-240);
-  }
-}
-
-function sampleNeuronIds(fly: LocalFly, activity: number) {
-  const count = Math.max(12, Math.min(96, Math.round(24 + activity * 30)));
-  const base = Math.abs(hashString(fly.id)) + Math.floor(t * 50);
-  return Array.from({ length: count }, (_, i) => (base * 7919 + i * 104729) % NEURONS);
-}
-
-function hashString(value: string) {
-  let hash = 0;
-  for (let i = 0; i < value.length; i++) hash = (hash * 31 + value.charCodeAt(i)) | 0;
-  return hash;
 }
 
 function unlockAchievement(key: string, title: string, description: string) {
@@ -605,30 +452,977 @@ function unlockAchievement(key: string, title: string, description: string) {
   achievements.push({ key, title, description });
 }
 
-function comparisons() {
-  const rows: Frame["comparisons"] = [];
-  for (let i = 0; i < flies.length; i++) {
-    for (let j = i + 1; j < flies.length; j++) {
-      const a = flies[i];
-      const b = flies[j];
-      rows.push({
-        a: a.id,
-        b: b.id,
-        a_name: a.name,
-        b_name: b.name,
-        neural_divergence: clamp(
-          Math.abs(a.dn_activity - b.dn_activity) +
-            Math.abs(a.firing_fraction - b.firing_fraction) * 8,
-        ),
-        behavioral_divergence: clamp(Math.hypot(a.x - b.x, a.y - b.y)),
-        energy_delta: Math.abs(a.energy - b.energy),
-      });
-    }
+function buildGroups(meta: ConnectomeMeta): NeuralGroups {
+  const populations: Record<string, Int32Array> = {};
+  for (const name of KNOWN_POPS) populations[name] = cells(meta, [name]);
+
+  const visual = {
+    loom: {
+      L: cells(meta, ["LPLC2"], "L"),
+      R: cells(meta, ["LPLC2"], "R"),
+    },
+    threat: {
+      L: cells(meta, ["LC4"], "L"),
+      R: cells(meta, ["LC4"], "R"),
+    },
+    small: {
+      L: cells(meta, ["LPLC1"], "L"),
+      R: cells(meta, ["LPLC1"], "R"),
+    },
+    target: {
+      L: cells(meta, ["LC10a"], "L"),
+      R: cells(meta, ["LC10a"], "R"),
+    },
+  };
+
+  const touch = {
+    L: cellsWithPrefix(meta, ["SNta"], "L"),
+    R: cellsWithPrefix(meta, ["SNta"], "R"),
+  };
+
+  const motor: Record<string, Int32Array> = {};
+  const motorTypes: Record<string, string> = {
+    forward: "DNg100",
+    steer: "DNa02",
+    escape: "DNp01",
+    backward: "MDN",
+  };
+  for (const [role, cellType] of Object.entries(motorTypes)) {
+    motor[role] = cells(meta, [cellType]);
+    motor[`${role}_L`] = cells(meta, [cellType], "L");
+    motor[`${role}_R`] = cells(meta, [cellType], "R");
   }
-  return rows;
+
+  return {
+    populations,
+    orn: cells(meta, ["ORN_DM1", "ORN_DM2"]),
+    hearing: cellsWithPrefix(meta, ["JO-A", "JO-B"]),
+    visual,
+    touch,
+    motor,
+    dn: cells(meta, ["descending_neuron"]),
+  };
 }
 
-function updateComparisons() {
+function createNeuralState(seed: number): NeuralState {
+  if (!connectomeMeta || !connectomeWeights || !neuralGroups) {
+    throw new Error("Connectome is not ready");
+  }
+
+  const motorSmooth: Record<string, number> = {};
+  for (const key of Object.keys(neuralGroups.motor)) motorSmooth[key] = 0;
+
+  return {
+    brain: new ConnectomeBrain(connectomeWeights, connectomeMeta.params, seed),
+    previousFired: new Int32Array(0),
+    dnTrace: 0,
+    motorSmooth,
+    previousSize: {},
+    pending: [],
+    silenced: new Set(),
+    blocked: null,
+  };
+}
+
+function attachNeural(fly: LocalFly) {
+  if (runtimeStatus !== "ready") return;
+  neural.set(fly.id, createNeuralState(fly.seed));
+}
+
+function rebuildBlocked(state: NeuralState) {
+  if (!neuralGroups || state.silenced.size === 0) {
+    state.blocked = null;
+    return;
+  }
+
+  const mask = new Uint8Array(connectomeMeta!.n);
+  for (const name of state.silenced) {
+    const idx = neuralGroups.populations[name];
+    if (!idx) continue;
+    for (let i = 0; i < idx.length; i++) mask[idx[i]] = 1;
+  }
+  state.blocked = mask;
+}
+
+async function bootConnectome() {
+  runtimeStatus = "loading";
+  runtimeProgress = "connectome manifest";
+  runtimeError = null;
+  emitFrame();
+
+  try {
+    const loaded = await loadConnectome(CONNECTOME_BASE, (progress) => {
+      runtimeProgress = progress;
+      emitFrame();
+    });
+
+    connectomeMeta = loaded.meta;
+    connectomeWeights = loaded.weights;
+    neuralGroups = buildGroups(loaded.meta);
+    runtimeWeightsMb = loaded.info.weights_mb;
+
+    if (
+      loaded.meta.n !== EXPECTED_NEURONS ||
+      loaded.weights.nnz <= 20_000_000
+    ) {
+      throw new Error(
+        `Unexpected connectome dimensions: ${loaded.meta.n} neurons / ${loaded.weights.nnz} synapses`,
+      );
+    }
+
+    neural.clear();
+    for (const fly of flies) attachNeural(fly);
+
+    runtimeStatus = "ready";
+    runtimeProgress = "ready";
+    addEvent(
+      "system",
+      `Real browser FlyBrain ready: ${loaded.meta.n.toLocaleString()} neurons / ${loaded.weights.nnz.toLocaleString()} synapses.`,
+    );
+
+    if (resumeWhenReady) running = true;
+    emitFrame();
+  } catch (error) {
+    runtimeStatus = "error";
+    runtimeError = error instanceof Error ? error.message : String(error);
+    runtimeProgress = "failed";
+    running = false;
+    addEvent("error", `Connectome load failed: ${runtimeError}`);
+    scope.postMessage({
+      type: "error",
+      message:
+        "The real browser connectome could not be loaded. The sandbox is paused instead of silently falling back to fake neural activity.",
+    });
+    emitFrame();
+  }
+}
+
+function metadata(): Metadata {
+  const n = connectomeMeta?.n ?? EXPECTED_NEURONS;
+  const nnz = connectomeWeights?.nnz ?? EXPECTED_SYNAPSES;
+
+  return {
+    neurons: n,
+    synapses: nnz,
+    dt: connectomeMeta?.params.dt ?? DT,
+    max_flies: MAX_FLIES,
+    mock: runtimeStatus !== "ready",
+    bodies: BODIES,
+    challenges: CHALLENGES,
+    provenance: {
+      graph: {
+        label: "CONNECTOME DATA",
+        description:
+          "MaleCNS v1.0 graph and neuron labels loaded as FlyBrain's compact browser export.",
+      },
+      dynamics: {
+        label: "SIMULATED NEURAL DYNAMICS",
+        description:
+          "Leaky integrate-and-fire stepping runs inside this browser Web Worker; no hosted CPU performs neural steps.",
+      },
+      compression: {
+        label: "WEB GRAPH ENCODING",
+        description:
+          "The browser export log-quantizes signed synaptic weights to one byte per edge; topology remains the MaleCNS graph.",
+      },
+    },
+    sensory_provenance: {},
+    motor_provenance: {},
+    motor_mapping:
+      "DNg100 forward, DNa02 steering, DNp01 escape and MDN backward; movement is an explicit engineering decoder.",
+  };
+}
+
+function relative(fly: LocalFly, obj: ArenaObject) {
+  const dx = obj.x - fly.x;
+  const dy = obj.y - fly.y;
+  const distance = Math.max(1e-4, Math.hypot(dx, dy));
+  return {
+    distance,
+    bearing: wrapAngle(Math.atan2(dy, dx) - fly.heading),
+    angularSize: Math.min(1.5, obj.radius / distance),
+  };
+}
+
+function sensorySnapshot(fly: LocalFly): SensorySnapshot {
+  const visual: SensoryItem[] = [];
+  const food: SensoryItem[] = [];
+  const sound: SensoryItem[] = [];
+  const obstacles: SensoryItem[] = [];
+
+  for (const obj of world.objects) {
+    const rel = relative(fly, obj);
+
+    if (obj.kind === "food" || obj.kind === "odor") {
+      const drive = Math.min(
+        0.8,
+        (obj.intensity * obj.amount) /
+          (0.12 + 5 * rel.distance * rel.distance),
+      );
+      const item = { object: obj, ...rel, drive };
+      food.push(item);
+      if (obj.kind === "food") visual.push(item);
+    } else if (
+      obj.kind === "stimulus" ||
+      obj.kind === "loom" ||
+      obj.kind === "predator" ||
+      obj.kind === "light" ||
+      obj.kind === "goal"
+    ) {
+      const drive = Math.min(
+        0.8,
+        obj.intensity / (1 + 2.5 * rel.distance),
+      );
+      visual.push({ object: obj, ...rel, drive });
+    } else if (obj.kind === "sound") {
+      const pulse =
+        0.5 +
+        0.5 *
+          Math.sin(2 * Math.PI * Math.max(0.25, obj.amount) * t);
+      const drive = Math.min(
+        0.8,
+        (obj.intensity * pulse) / (0.2 + 3 * rel.distance),
+      );
+      sound.push({ object: obj, ...rel, drive });
+    } else if (obj.kind === "obstacle") {
+      const clearance = Math.max(0, rel.distance - obj.radius);
+      const drive = Math.max(0, 1 - clearance / 0.24);
+      obstacles.push({ object: obj, ...rel, drive, clearance });
+    }
+  }
+
+  return { visual, food, sound, obstacles };
+}
+
+function sideForBearing(bearing: number): Side {
+  return bearing < 0 ? "L" : "R";
+}
+
+function encodeSensory(
+  fly: LocalFly,
+  state: NeuralState,
+  snapshot: SensorySnapshot,
+) {
+  if (!neuralGroups) throw new Error("Connectome groups unavailable");
+
+  const display: Record<string, number> = {
+    food_odor: 0,
+    target: 0,
+    obstacle: 0,
+    loom: 0,
+    threat: 0,
+    touch: 0,
+    sound: 0,
+    light: 0,
+  };
+
+  const hunger = clamp(1 - fly.energy / 100);
+  const hungerGain = 0.45 + 1.35 * hunger;
+  const sensoryGain = fly.sensoryGain;
+
+  const odor = Math.max(0, ...snapshot.food.map((item) => item.drive));
+  if (odor > 0 && neuralGroups.orn.length) {
+    const amount = clamp(odor * sensoryGain * hungerGain, 0, 0.8);
+    state.brain.stimulate(neuralGroups.orn, amount);
+    display.food_odor = amount;
+  }
+
+  const currentSizes: Record<string, number> = {};
+  for (const item of snapshot.visual) {
+    const obj = item.object;
+    const side = sideForBearing(item.bearing);
+    const size = item.angularSize;
+    currentSizes[obj.id] = size;
+    const previous = state.previousSize[obj.id] ?? size;
+    const growth = Math.max(0, size - previous);
+
+    if (obj.kind === "loom" || obj.kind === "predator") {
+      const loom = clamp(growth * 10 + size * 0.08, 0, 0.8);
+      if (loom > 0) {
+        state.brain.stimulate(
+          neuralGroups.visual.loom[side],
+          loom * sensoryGain,
+        );
+        display.loom = Math.max(display.loom, loom);
+      }
+
+      const threat = clamp((0.18 - item.distance) * 5, 0, 0.8);
+      if (threat > 0) {
+        state.brain.stimulate(
+          neuralGroups.visual.threat[side],
+          threat * sensoryGain,
+        );
+        display.threat = Math.max(display.threat, threat);
+      }
+    } else if (
+      obj.kind === "stimulus" ||
+      obj.kind === "goal" ||
+      obj.kind === "food"
+    ) {
+      const target = clamp(0.25 + size * 0.9, 0, 0.8);
+      state.brain.stimulate(
+        neuralGroups.visual.target[side],
+        target * sensoryGain,
+      );
+      display.target = Math.max(display.target, target);
+    } else if (obj.kind === "light") {
+      // The compact upstream web export does not carry photoreceptor azimuth
+      // metadata yet. Keep the UI channel explicit instead of inventing an input.
+      display.light = Math.max(display.light, item.drive);
+    }
+  }
+  state.previousSize = currentSizes;
+
+  for (const item of snapshot.obstacles) {
+    if (Math.abs(item.bearing) > 1.55) continue;
+    const side = sideForBearing(item.bearing);
+    const clearance = item.clearance ?? item.distance;
+    const approach = clamp((0.24 - clearance) / 0.24);
+    const smallDrive = clamp(
+      approach * 0.65 + item.angularSize * 0.2,
+      0,
+      0.8,
+    );
+    if (smallDrive > 0) {
+      state.brain.stimulate(
+        neuralGroups.visual.small[side],
+        smallDrive * sensoryGain,
+      );
+      display.obstacle = Math.max(display.obstacle, smallDrive);
+    }
+  }
+
+  if (fly.touchSide) {
+    state.brain.stimulate(
+      neuralGroups.touch[fly.touchSide],
+      0.55 * sensoryGain,
+    );
+    display.touch = 0.55;
+  }
+
+  const soundDrive = Math.max(0, ...snapshot.sound.map((item) => item.drive));
+  if (soundDrive > 0 && neuralGroups.hearing.length) {
+    const amount = clamp(soundDrive * sensoryGain, 0, 0.8);
+    state.brain.stimulate(neuralGroups.hearing, amount);
+    display.sound = amount;
+  }
+
+  for (const pending of state.pending) {
+    state.brain.stimulate(pending.idx, pending.amount);
+  }
+  state.pending = [];
+
+  return display;
+}
+
+function countIntersection(a: Int32Array, b: Int32Array) {
+  let i = 0;
+  let j = 0;
+  let count = 0;
+  while (i < a.length && j < b.length) {
+    const av = a[i];
+    const bv = b[j];
+    if (av === bv) {
+      count++;
+      i++;
+      j++;
+    } else if (av < bv) {
+      i++;
+    } else {
+      j++;
+    }
+  }
+  return count;
+}
+
+function jaccardAndNew(previous: Int32Array, current: Int32Array) {
+  let i = 0;
+  let j = 0;
+  let intersection = 0;
+  let newly = 0;
+
+  while (i < previous.length && j < current.length) {
+    const a = previous[i];
+    const b = current[j];
+    if (a === b) {
+      intersection++;
+      i++;
+      j++;
+    } else if (a < b) {
+      i++;
+    } else {
+      newly++;
+      j++;
+    }
+  }
+  newly += current.length - j;
+
+  const union = previous.length + current.length - intersection;
+  return {
+    jaccard: union ? 1 - intersection / union : 0,
+    newly,
+  };
+}
+
+function observeMotor(state: NeuralState, fired: Int32Array) {
+  if (!neuralGroups || !connectomeMeta) return {};
+
+  const alpha = 0.28;
+  for (const [name, idx] of Object.entries(neuralGroups.motor)) {
+    const count = countIntersection(fired, idx);
+    const hz =
+      count /
+      Math.max(1, idx.length) /
+      Math.max(connectomeMeta.params.dt, 1e-6);
+    state.motorSmooth[name] += alpha * (hz - state.motorSmooth[name]);
+  }
+
+  return { ...state.motorSmooth };
+}
+
+function decodeMotor(motor: Record<string, number>, controller: Controller) {
+  const steerDiff =
+    (motor.steer_L ?? 0) - (motor.steer_R ?? 0);
+  const turn = clamp(steerDiff * 0.09, -3, 3);
+
+  const forwardHz = Math.max(0, (motor.forward ?? 0) - 0.7);
+  const backwardHz = Math.max(0, (motor.backward ?? 0) - 0.7);
+  const neuralSpeed = clamp(
+    (forwardHz - backwardHz) * 0.018,
+    -0.14,
+    0.16,
+  );
+
+  const base = controller === "play" ? 0.035 : 0;
+  let decodedSpeed = clamp(base + neuralSpeed, -0.14, 0.18);
+
+  const escape = clamp(((motor.escape ?? 0) - 2) / 16);
+  if (escape > 0) {
+    decodedSpeed = Math.max(decodedSpeed, 0.08 + 0.12 * escape);
+  }
+
+  return { turn, speed: decodedSpeed, escape };
+}
+
+function playAssists(
+  fly: LocalFly,
+  snapshot: SensorySnapshot,
+  escape: number,
+) {
+  const zero = {
+    forage: 0,
+    avoid: 0,
+    obstacle: 0,
+    edge: 0,
+    target: 0,
+    orient: 0,
+    search: 0,
+  };
+
+  if (fly.controller !== "play") {
+    return { turn: 0, speed: 0, assists: zero };
+  }
+
+  const hunger = clamp(1 - fly.energy / 100);
+  const odor = Math.max(0, ...snapshot.food.map((item) => item.drive));
+
+  let forageTurn = 0;
+  if (snapshot.food.length && hunger > 0.15) {
+    const strongest = snapshot.food.reduce((a, b) =>
+      a.drive >= b.drive ? a : b,
+    );
+    forageTurn = clamp(
+      strongest.bearing * strongest.drive * hunger * 2.6,
+      -1.25,
+      1.25,
+    );
+  }
+
+  const threats = snapshot.visual.filter((item) =>
+    ["predator", "loom"].includes(item.object.kind),
+  );
+  let avoidTurn = 0;
+  let threatStrength = 0;
+  if (threats.length) {
+    const nearest = threats.reduce((a, b) =>
+      a.distance <= b.distance ? a : b,
+    );
+    threatStrength = clamp((0.52 - nearest.distance) / 0.52);
+    let bearing = nearest.bearing;
+    if (Math.abs(bearing) < 0.08) {
+      bearing =
+        (fly.seed + Math.floor(t * 10)) % 2 === 0 ? 0.08 : -0.08;
+    }
+    avoidTurn = clamp(
+      -bearing * threatStrength * 3.8,
+      -2.25,
+      2.25,
+    );
+  }
+
+  const ahead = snapshot.obstacles.filter(
+    (item) =>
+      Math.abs(item.bearing) < 1.45 &&
+      (item.clearance ?? item.distance) < 0.24,
+  );
+  let obstacleTurn = 0;
+  let obstacleStrength = 0;
+  if (ahead.length) {
+    const nearest = ahead.reduce((a, b) =>
+      (a.clearance ?? a.distance) <= (b.clearance ?? b.distance)
+        ? a
+        : b,
+    );
+    const clearance = nearest.clearance ?? nearest.distance;
+    let bearing = nearest.bearing;
+    obstacleStrength = clamp((0.24 - clearance) / 0.24);
+    if (Math.abs(bearing) < 0.1) {
+      bearing =
+        (Math.floor(fly.seed / 3) + Math.floor(t * 5)) % 2 === 0
+          ? 0.1
+          : -0.1;
+    }
+    obstacleTurn = clamp(
+      -bearing * (1.15 + obstacleStrength * 3.2),
+      -2.6,
+      2.6,
+    );
+  }
+
+  let edgeTurn = 0;
+  let edgeStrength = 0;
+  const vx = Math.cos(fly.heading);
+  const vy = Math.sin(fly.heading);
+  const edgeDistances: Array<[number, boolean]> = [
+    [fly.x, vx < 0],
+    [1 - fly.x, vx > 0],
+    [fly.y, vy < 0],
+    [1 - fly.y, vy > 0],
+  ];
+  const outward = edgeDistances
+    .filter(([, active]) => active)
+    .map(([distance]) => distance);
+  if (outward.length) {
+    const nearest = Math.min(...outward);
+    edgeStrength = clamp((0.12 - nearest) / 0.12);
+    if (edgeStrength > 0) {
+      const desired = Math.atan2(0.5 - fly.y, 0.5 - fly.x);
+      const delta = wrapAngle(desired - fly.heading);
+      edgeTurn = clamp(
+        delta * (0.9 + 2.4 * edgeStrength),
+        -2.7,
+        2.7,
+      );
+    }
+  }
+
+  const targets = snapshot.visual.filter((item) =>
+    ["stimulus", "goal"].includes(item.object.kind),
+  );
+  let targetTurn = 0;
+  let targetDrive = 0;
+  let targetDistance = 1;
+  if (targets.length) {
+    const strongest = targets.reduce((a, b) =>
+      a.drive / Math.max(0.06, a.distance) >=
+      b.drive / Math.max(0.06, b.distance)
+        ? a
+        : b,
+    );
+    targetDrive = strongest.drive;
+    targetDistance = strongest.distance;
+    targetTurn = clamp(
+      strongest.bearing * (0.8 + targetDrive * 3),
+      -1.65,
+      1.65,
+    );
+  }
+
+  const orientCandidates = [
+    ...snapshot.visual.filter((item) => item.object.kind === "light"),
+    ...snapshot.sound,
+  ];
+  let orientTurn = 0;
+  let orientDrive = 0;
+  if (orientCandidates.length) {
+    const strongest = orientCandidates.reduce((a, b) =>
+      a.drive >= b.drive ? a : b,
+    );
+    orientDrive = strongest.drive;
+    orientTurn = clamp(
+      strongest.bearing * orientDrive * 0.9,
+      -0.65,
+      0.65,
+    );
+  }
+
+  let search =
+    Math.sin(t * 0.71 + (fly.seed % 31) * 0.17) *
+    (0.3 + 0.3 * hunger);
+  const cueStrength = Math.max(
+    odor,
+    targetDrive,
+    orientDrive * 0.6,
+    threatStrength,
+    obstacleStrength,
+    edgeStrength,
+  );
+  search *= Math.max(0.05, 1 - cueStrength * 1.45);
+  if (odor > fly.previousOdor) search *= 0.35;
+  fly.previousOdor = odor;
+
+  let touchTurn = 0;
+  if (fly.touchSide === "L") touchTurn = 2.5;
+  else if (fly.touchSide === "R") touchTurn = -2.5;
+
+  let assistSpeed = 0.024 + hunger * 0.042;
+  if (targetDrive > 0) {
+    assistSpeed += 0.035 * targetDrive;
+    if (targetDistance < 0.055) assistSpeed *= 0.35;
+  }
+  if (obstacleStrength > 0.55 || edgeStrength > 0.55) {
+    assistSpeed *= 0.65;
+  }
+  if (escape > 0.2) assistSpeed += 0.08 * escape;
+
+  let totalTurn: number;
+  if (Math.abs(touchTurn) > 0) totalTurn = touchTurn;
+  else if (Math.abs(avoidTurn) > 0.15)
+    totalTurn = avoidTurn + search * 0.08;
+  else if (Math.abs(obstacleTurn) > 0.1)
+    totalTurn = obstacleTurn + search * 0.05;
+  else if (Math.abs(edgeTurn) > 0.1)
+    totalTurn = edgeTurn + search * 0.05;
+  else
+    totalTurn =
+      targetTurn + forageTurn + orientTurn + search;
+
+  return {
+    turn: totalTurn,
+    speed: assistSpeed,
+    assists: {
+      forage: forageTurn,
+      avoid: avoidTurn,
+      obstacle: obstacleTurn + touchTurn,
+      edge: edgeTurn,
+      target: targetTurn,
+      orient: orientTurn,
+      search,
+    },
+  };
+}
+
+function stepNeural(
+  fly: LocalFly,
+  state: NeuralState,
+  snapshot: SensorySnapshot,
+) {
+  if (!neuralGroups || !connectomeMeta) {
+    throw new Error("Connectome is not ready");
+  }
+
+  const senses = encodeSensory(fly, state, snapshot);
+  state.brain.step();
+  const firedView = state.brain.filterFired(state.blocked);
+  const fired = Int32Array.from(firedView);
+
+  const dnFired = countIntersection(fired, neuralGroups.dn);
+  const traceDecay = Math.exp(-connectomeMeta.params.dt / 0.1);
+  state.dnTrace =
+    state.dnTrace * traceDecay +
+    dnFired / Math.max(1, neuralGroups.dn.length);
+
+  const motor = observeMotor(state, fired);
+  const decoded = decodeMotor(motor, fly.controller);
+  const delta = jaccardAndNew(state.previousFired, fired);
+  state.previousFired = fired;
+
+  return {
+    senses,
+    motor,
+    ...decoded,
+    fired,
+    dnFired,
+    dnActivity: state.dnTrace,
+    jaccard: delta.jaccard,
+    newly: delta.newly,
+  };
+}
+
+function updateMovingObjects(stepDt: number) {
+  for (const obj of world.objects) {
+    if (!obj.vx && !obj.vy) continue;
+
+    obj.x += obj.vx * stepDt;
+    obj.y += obj.vy * stepDt;
+
+    if (obj.x < obj.radius || obj.x > 1 - obj.radius) {
+      obj.vx *= -1;
+      obj.x = clamp(obj.x, obj.radius, 1 - obj.radius);
+    }
+
+    if (obj.y < obj.radius || obj.y > 1 - obj.radius) {
+      obj.vy *= -1;
+      obj.y = clamp(obj.y, obj.radius, 1 - obj.radius);
+    }
+  }
+}
+
+function bounceBounds(
+  x: number,
+  y: number,
+  heading: number,
+): [number, number, number, boolean] {
+  const padding = 0.02;
+  let bounced = false;
+
+  if (x < padding) {
+    x = padding + 0.002;
+    heading = Math.PI - heading;
+    bounced = true;
+  } else if (x > 1 - padding) {
+    x = 1 - padding - 0.002;
+    heading = Math.PI - heading;
+    bounced = true;
+  }
+
+  if (y < padding) {
+    y = padding + 0.002;
+    heading = -heading;
+    bounced = true;
+  } else if (y > 1 - padding) {
+    y = 1 - padding - 0.002;
+    heading = -heading;
+    bounced = true;
+  }
+
+  return [x, y, ((heading % (2 * Math.PI)) + 2 * Math.PI) % (2 * Math.PI), bounced];
+}
+
+function collide(
+  fly: LocalFly,
+  x: number,
+  y: number,
+  oldX: number,
+  oldY: number,
+) {
+  for (const obj of world.objects) {
+    if (obj.kind !== "obstacle") continue;
+    const dx = obj.x - x;
+    const dy = obj.y - y;
+    if (Math.hypot(dx, dy) >= obj.radius + 0.018) continue;
+
+    const rel = wrapAngle(Math.atan2(dy, dx) - fly.heading);
+    return {
+      x: oldX,
+      y: oldY,
+      touch: (rel < 0 ? "L" : "R") as Side,
+    };
+  }
+
+  return {
+    x: clamp(x, 0.02, 0.98),
+    y: clamp(y, 0.02, 0.98),
+    touch: null,
+  };
+}
+
+function feed(fly: LocalFly) {
+  for (const obj of [...world.objects]) {
+    if (obj.kind !== "food") continue;
+    if (Math.hypot(fly.x - obj.x, fly.y - obj.y) >= obj.radius + 0.028)
+      continue;
+
+    const eaten = Math.min(obj.amount, 0.004);
+    obj.amount -= eaten;
+    const finished = obj.amount <= 1e-6;
+    if (finished) {
+      world.objects = world.objects.filter((item) => item.id !== obj.id);
+    }
+    return { feeding: true, eaten, finished };
+  }
+
+  return { feeding: false, eaten: 0, finished: false };
+}
+
+function predatorHit(fly: LocalFly) {
+  return world.objects.some(
+    (obj) =>
+      obj.kind === "predator" &&
+      Math.hypot(fly.x - obj.x, fly.y - obj.y) <
+        obj.radius + 0.02,
+  );
+}
+
+function stepFly(fly: LocalFly, stepDt: number) {
+  if (!fly.alive) return;
+  const state = neural.get(fly.id);
+  if (!state) return;
+
+  const snapshot = sensorySnapshot(fly);
+  const previousTouch = fly.touchSide;
+  const result = stepNeural(fly, state, snapshot);
+
+  // The tactile input above is from the previous collision, matching the
+  // server runtime. Clear it before calculating this step's new collision.
+  fly.touchSide = null;
+
+  const assist = playAssists(fly, snapshot, result.escape);
+  let turn = result.turn + assist.turn;
+  let decodedSpeed = result.speed + assist.speed;
+
+  if (t <= fly.manualUntil) {
+    turn += fly.manualTurn * 3;
+    decodedSpeed += fly.manualThrottle * 0.14;
+    fly.state = "POSSESSED";
+  }
+
+  if (result.escape > 0.45 && fly.lastEscape <= 0.45) {
+    fly.escape_events += 1;
+  }
+  fly.lastEscape = result.escape;
+
+  if (fly.body_type === "synth") decodedSpeed = 0;
+  else decodedSpeed *= BODY_SPEED[fly.body_type];
+
+  const oldX = fly.x;
+  const oldY = fly.y;
+  fly.heading =
+    ((fly.heading + turn * stepDt) % (2 * Math.PI) + 2 * Math.PI) %
+    (2 * Math.PI);
+  fly.speed = clamp(decodedSpeed, -0.24, 0.28);
+
+  let nx = fly.x + Math.cos(fly.heading) * fly.speed * stepDt;
+  let ny = fly.y + Math.sin(fly.heading) * fly.speed * stepDt;
+  if (fly.body_type !== "synth") {
+    nx += world.wind_x * stepDt;
+    ny += world.wind_y * stepDt;
+  }
+
+  let bouncedHeading: number;
+  let bounced: boolean;
+  [nx, ny, bouncedHeading, bounced] = bounceBounds(nx, ny, fly.heading);
+  if (bounced) {
+    const jitter = ((fly.seed % 17) - 8) * 0.003;
+    fly.heading =
+      ((bouncedHeading + jitter) % (2 * Math.PI) + 2 * Math.PI) %
+      (2 * Math.PI);
+  }
+
+  const collision = collide(fly, nx, ny, oldX, oldY);
+  fly.x = collision.x;
+  fly.y = collision.y;
+  fly.touchSide = collision.touch;
+
+  const feeding = feed(fly);
+  if (feeding.feeding && result.escape < 0.2) {
+    fly.speed = 0;
+    fly.x = oldX;
+    fly.y = oldY;
+    fly.energy = Math.min(100, fly.energy + feeding.eaten * 70);
+    if (feeding.finished) {
+      fly.food_eaten += 1;
+      addEvent("behavior", `${fly.name} finished a fruit.`);
+      unlockAchievement("first_bite", "FIRST BITE", "A fly ate food.");
+    }
+    fly.state = "FEEDING";
+  } else if (result.escape > 0.35) {
+    fly.state = "ESCAPING";
+  } else if (bounced) {
+    fly.state = "BOUNCING";
+  } else if (Math.abs(assist.assists.avoid) > 0.12) {
+    fly.state = "EVADING";
+  } else if (Math.abs(assist.assists.obstacle) > 0.1) {
+    fly.state = "AVOIDING WALL";
+  } else if (Math.abs(assist.assists.edge) > 0.1) {
+    fly.state = "TURNING INWARD";
+  } else if (Math.abs(assist.assists.target) > 0.08) {
+    fly.state = "SEEKING TARGET";
+  } else if (Math.abs(assist.assists.forage) > 0.06) {
+    fly.state = "FORAGING";
+  } else if (Math.abs(assist.assists.orient) > 0.05) {
+    fly.state = "ORIENTING";
+  } else if (fly.speed < -0.015) {
+    fly.state = "REVERSING";
+  } else if (Math.abs(fly.speed) > 0.02) {
+    fly.state = "EXPLORING";
+  } else if (t > fly.manualUntil) {
+    fly.state = "IDLE";
+  }
+
+  const drain = 0.0018 + Math.abs(fly.speed) * 0.012;
+  fly.energy = Math.max(0, fly.energy - drain);
+  fly.hunger = clamp(1 - fly.energy / 100);
+
+  if (fly.energy <= 0) {
+    fly.alive = false;
+    fly.state = "OUT OF ENERGY";
+  }
+
+  if (predatorHit(fly)) {
+    fly.alive = false;
+    fly.energy = 0;
+    fly.hunger = 1;
+    fly.state = "CAUGHT";
+    addEvent("behavior", `${fly.name} was caught by the predator.`);
+  }
+
+  fly.motor = result.motor;
+  fly.senses = result.senses;
+  fly.assists = assist.assists;
+  fly.fired_count = result.fired.length;
+  fly.firing_fraction =
+    result.fired.length / Math.max(1, connectomeMeta?.n ?? EXPECTED_NEURONS);
+  fly.newly_firing = result.newly;
+  fly.firing_jaccard_distance = result.jaccard;
+  fly.dn_activity = result.dnActivity;
+  fly.dn_fired = result.dnFired;
+  fly.sampled_fired = Array.from(result.fired.subarray(0, 256));
+  fly.brain_view = {
+    kind: "real-connectome-no-soma-web-export",
+    mapped: 0,
+    firing_positions: [],
+  };
+
+  if (t - (fly.trail.at(-1)?.t ?? -Infinity) >= 0.08) {
+    fly.trail.push({ t, x: fly.x, y: fly.y });
+    if (fly.trail.length > 180) fly.trail = fly.trail.slice(-180);
+  }
+
+  if (result.escape > 0.45 && previousTouch !== fly.touchSide) {
+    unlockAchievement(
+      "escape_artist",
+      "ESCAPE ARTIST",
+      "Triggered a strong DNp01 escape response.",
+    );
+  }
+}
+
+function applyCouplings() {
+  if (!neuralGroups) return;
+
+  for (const link of couplings) {
+    const source = flies.find((fly) => fly.id === link.source);
+    const target = neural.get(link.target);
+    const idx = neuralGroups.populations[link.population];
+    if (!source || !target || !idx?.length) continue;
+
+    const amount = clamp(source.dn_activity * link.gain, 0, 0.8);
+    if (amount > 0) target.pending.push({ idx, amount });
+  }
+}
+
+function advance() {
+  if (runtimeStatus !== "ready") return;
+
+  applyCouplings();
+  updateMovingObjects(DT);
+  for (const fly of flies) stepFly(fly, DT);
+  t += DT;
+  challenge.elapsed = Math.max(0, t - challenge.started);
+
+  evaluateChallenge();
+
   if (flies.length >= 3) {
     unlockAchievement("party_box", "PARTY BOX", "Ran at least three agents together.");
   }
@@ -639,13 +1433,20 @@ function updateComparisons() {
       "Dropped an agent below 25 energy.",
     );
   }
+  if (t >= 60 && flies.some((fly) => fly.alive)) {
+    unlockAchievement("survivor", "SURVIVOR", "Kept an agent alive for 60 simulated seconds.");
+  }
 }
 
 function evaluateChallenge() {
   if (challenge.completed) return;
 
-  if (challenge.goal === "food" && flies.some((fly) => fly.food_eaten >= 3)) {
-    completeChallenge(flies.find((fly) => fly.food_eaten >= 3)?.name ?? null);
+  if (
+    challenge.goal === "food" &&
+    flies.reduce((sum, fly) => sum + fly.food_eaten, 0) >=
+      (challenge.target ?? 3)
+  ) {
+    completeChallenge(null);
   } else if (
     challenge.goal === "survive" &&
     challenge.target &&
@@ -653,21 +1454,35 @@ function evaluateChallenge() {
     flies.some((fly) => fly.alive)
   ) {
     completeChallenge(flies.find((fly) => fly.alive)?.name ?? null);
-  } else if (challenge.goal === "race") {
-    for (const fly of flies) {
-      const goal = nearest(fly, ["goal", "stimulus"]);
-      if (goal && goal.distance < goal.obj.radius + 0.025) {
-        completeChallenge(fly.name);
-        break;
-      }
-    }
   } else if (
     challenge.goal === "dn_activity" &&
-    flies.some((fly) => fly.dn_activity >= (challenge.target ?? 0.12))
+    flies.some(
+      (fly) => fly.dn_activity >= (challenge.target ?? 0.12),
+    )
   ) {
     completeChallenge(
-      flies.find((fly) => fly.dn_activity >= (challenge.target ?? 0.12))?.name ?? null,
+      flies.find(
+        (fly) => fly.dn_activity >= (challenge.target ?? 0.12),
+      )?.name ?? null,
     );
+  } else if (challenge.goal === "race") {
+    const goal = world.objects.find(
+      (obj) => obj.kind === "goal" || obj.kind === "stimulus",
+    );
+    if (goal) {
+      const winner = flies.find(
+        (fly) =>
+          fly.alive &&
+          Math.hypot(fly.x - goal.x, fly.y - goal.y) <
+            goal.radius + 0.025,
+      );
+      if (winner) completeChallenge(winner.name);
+    }
+  } else if (challenge.goal === "first_food") {
+    const winner = flies.find(
+      (fly) => fly.food_eaten >= (challenge.target ?? 1),
+    );
+    if (winner) completeChallenge(winner.name);
   }
 }
 
@@ -676,8 +1491,37 @@ function completeChallenge(winner: string | null) {
   challenge.winner = winner;
   addEvent(
     "challenge",
-    winner ? `${winner} completed ${challenge.name}.` : `${challenge.name} completed.`,
+    winner
+      ? `${winner} completed ${challenge.name}.`
+      : `${challenge.name} completed.`,
   );
+}
+
+function comparisons(): Frame["comparisons"] {
+  const rows: Frame["comparisons"] = [];
+
+  for (let i = 0; i < flies.length; i++) {
+    for (let j = i + 1; j < flies.length; j++) {
+      const a = flies[i];
+      const b = flies[j];
+      const an = neural.get(a.id)?.previousFired ?? new Int32Array(0);
+      const bn = neural.get(b.id)?.previousFired ?? new Int32Array(0);
+      const intersection = countIntersection(an, bn);
+      const union = an.length + bn.length - intersection;
+
+      rows.push({
+        a: a.id,
+        b: b.id,
+        a_name: a.name,
+        b_name: b.name,
+        neural_divergence: union ? 1 - intersection / union : 0,
+        behavioral_divergence: Math.hypot(a.x - b.x, a.y - b.y),
+        energy_delta: Math.abs(a.energy - b.energy),
+      });
+    }
+  }
+
+  return rows;
 }
 
 function framePayload(): Frame {
@@ -686,10 +1530,10 @@ function framePayload(): Frame {
     t,
     running,
     speed,
-    mock: true,
+    mock: runtimeStatus !== "ready",
     flies: flies.map(publicFly),
     world: clone(world),
-    events: clone(events),
+    events: clone(events.slice(-40)),
     challenge: clone(challenge),
     achievements: clone(achievements),
     couplings: clone(couplings),
@@ -699,6 +1543,17 @@ function framePayload(): Frame {
       label,
       t: checkpointT,
     })),
+    runtime: {
+      mode: "browser",
+      status: runtimeStatus,
+      progress: runtimeProgress,
+      error: runtimeError,
+      connectome_base: CONNECTOME_BASE,
+      neurons: connectomeMeta?.n ?? EXPECTED_NEURONS,
+      synapses: connectomeWeights?.nnz ?? EXPECTED_SYNAPSES,
+      download_mb: runtimeWeightsMb || undefined,
+      weight_encoding: "FlyBrain web export · 8-bit log quantized",
+    },
   };
 }
 
@@ -719,30 +1574,48 @@ function findFly(id: string) {
 }
 
 function populationStatus(fly: LocalFly) {
-  const values: Record<string, number> = {
-    LC4: fly.senses.threat ?? 0,
-    LPLC2: fly.senses.loom ?? 0,
-    LPLC1: fly.senses.target ?? 0,
-    LC10a: fly.senses.target ?? 0,
-    ORN_DM1: fly.senses.food_odor ?? 0,
-    ORN_DM2: fly.senses.food_odor ?? 0,
-    SNta: fly.senses.touch ?? 0,
-    DNg100: (fly.motor.forward ?? 0) / 20,
-    DNa02: ((fly.motor.steer_L ?? 0) + (fly.motor.steer_R ?? 0)) / 40,
-    DNp01: (fly.motor.escape ?? 0) / 20,
-    MDN: (fly.motor.backward ?? 0) / 20,
-    descending_neuron: fly.dn_activity,
-  };
-
-  return Object.entries(POPULATIONS).map(([name, neurons]) => ({
-    name,
-    neurons,
-    firing: Math.min(
+  if (!neuralGroups) {
+    return Object.entries(FALLBACK_POPULATIONS).map(([name, neurons]) => ({
+      name,
       neurons,
-      Math.round((values[name] ?? fly.firing_fraction) * neurons),
-    ),
-    silenced: fly.silenced.includes(name),
-  }));
+      firing: 0,
+      silenced: fly.silenced.includes(name),
+    }));
+  }
+
+  const fired = neural.get(fly.id)?.previousFired ?? new Int32Array(0);
+  const state = neural.get(fly.id);
+
+  return KNOWN_POPS.map((name) => {
+    const idx = neuralGroups!.populations[name];
+    return {
+      name,
+      neurons: idx.length,
+      firing: countIntersection(fired, idx),
+      silenced: state?.silenced.has(name) ?? false,
+    };
+  });
+}
+
+function snapshotNeural() {
+  const out: Record<string, NeuralSnapshot> = {};
+
+  for (const [id, state] of neural) {
+    out[id] = {
+      brain: state.brain.snapshot(),
+      previousFired: state.previousFired.slice(),
+      dnTrace: state.dnTrace,
+      motorSmooth: { ...state.motorSmooth },
+      previousSize: { ...state.previousSize },
+      pending: state.pending.map((item) => ({
+        idx: item.idx.slice(),
+        amount: item.amount,
+      })),
+      silenced: [...state.silenced],
+    };
+  }
+
+  return out;
 }
 
 function snapshot(): Snapshot {
@@ -756,12 +1629,13 @@ function snapshot(): Snapshot {
     couplings: clone(couplings),
     achievements: clone(achievements),
     challenge: clone(challenge),
+    neural: snapshotNeural(),
   };
 }
 
 function restore(data: Snapshot) {
   t = data.t;
-  running = data.running;
+  running = data.running && runtimeStatus === "ready";
   speed = data.speed;
   world = clone(data.world);
   flies = clone(data.flies);
@@ -769,11 +1643,39 @@ function restore(data: Snapshot) {
   couplings = clone(data.couplings);
   achievements = clone(data.achievements);
   challenge = clone(data.challenge);
+
+  neural.clear();
+  if (runtimeStatus === "ready") {
+    for (const fly of flies) {
+      const state = createNeuralState(fly.seed);
+      const saved = data.neural?.[fly.id];
+      if (saved) {
+        state.brain.restore(saved.brain);
+        state.previousFired = saved.previousFired.slice();
+        state.dnTrace = saved.dnTrace;
+        state.motorSmooth = { ...saved.motorSmooth };
+        state.previousSize = { ...saved.previousSize };
+        state.pending = saved.pending.map((item) => ({
+          idx: item.idx.slice(),
+          amount: item.amount,
+        }));
+        state.silenced = new Set(saved.silenced);
+        rebuildBlocked(state);
+      }
+      neural.set(fly.id, state);
+    }
+  }
 }
 
 function randomWorld(seed?: number) {
   const chosen = seed ?? Math.floor(Math.random() * 1_000_000);
-  world = makeWorld(chosen);
+  world = {
+    seed: chosen,
+    daylight: 1,
+    wind_x: 0,
+    wind_y: 0,
+    objects: [],
+  };
   const rand = seeded(chosen);
 
   const specs: Array<[WorldKind, number]> = [
@@ -827,53 +1729,127 @@ function addWorldObject(body: any) {
 }
 
 function spawnFly(query: URLSearchParams, body?: any) {
-  if (flies.length >= MAX_FLIES) throw new Error(`Maximum ${MAX_FLIES} agents`);
+  if (flies.length >= MAX_FLIES) {
+    throw new Error(`Maximum ${MAX_FLIES} full browser FlyBrain states`);
+  }
 
   const clonePrime = query.get("clone_prime") === "true";
-  const bodyType = (query.get("body_type") ?? body?.body_type ?? "fly") as BodyType;
-  const name = query.get("name") ?? body?.name ?? `AGENT ${nextFly}`;
+  const bodyType = (query.get("body_type") ??
+    body?.body_type ??
+    "fly") as BodyType;
+  const name =
+    query.get("name") ?? body?.name ?? `AGENT ${nextFly}`;
   const id = uid("fly", nextFly++);
+  const seed = (world.seed + hashString(id)) >>> 0;
 
-  let fly = makeFly(id, name, false, BODIES.includes(bodyType) ? bodyType : "fly");
+  let fly = makeFly(
+    id,
+    name,
+    false,
+    BODIES.includes(bodyType) ? bodyType : "fly",
+    seed,
+  );
+
   if (clonePrime) {
     const prime = findFly("prime");
     fly = {
       ...clone(prime),
       id,
       name,
+      seed,
       is_prime: false,
-      body_type: BODIES.includes(bodyType) ? bodyType : prime.body_type,
+      body_type: BODIES.includes(bodyType)
+        ? bodyType
+        : prime.body_type,
       x: clamp(prime.x + 0.035, 0.04, 0.96),
       y: clamp(prime.y + 0.035, 0.04, 0.96),
       trail: [],
+      sampled_fired: [...prime.sampled_fired],
+      interventions: clone(prime.interventions),
     };
   }
 
   flies.push(fly);
-  addEvent("agent", `Spawned ${fly.name} in the browser worker.`);
+
+  if (runtimeStatus === "ready") {
+    if (clonePrime) {
+      const source = neural.get("prime");
+      const state = createNeuralState(seed);
+      if (source) {
+        state.brain.copyStateFrom(source.brain);
+        state.previousFired = source.previousFired.slice();
+        state.dnTrace = source.dnTrace;
+        state.motorSmooth = { ...source.motorSmooth };
+        state.previousSize = { ...source.previousSize };
+        state.pending = source.pending.map((item) => ({
+          idx: item.idx.slice(),
+          amount: item.amount,
+        }));
+        state.silenced = new Set(source.silenced);
+        rebuildBlocked(state);
+      }
+      neural.set(id, state);
+    } else {
+      attachNeural(fly);
+    }
+  }
+
+  addEvent("agent", `Spawned ${fly.name}; neural state runs locally in this browser.`);
   return publicFly(fly);
 }
 
 function forkFly(sourceId: string) {
+  if (flies.length >= MAX_FLIES) {
+    throw new Error(`Maximum ${MAX_FLIES} full browser FlyBrain states`);
+  }
+
   const source = findFly(sourceId);
   const id = uid("fly", nextFly++);
+  const seed = source.seed;
   const copy: LocalFly = {
     ...clone(source),
     id,
     name: `${source.name} FORK`,
+    seed,
     is_prime: false,
     x: clamp(source.x + 0.03, 0.04, 0.96),
     y: clamp(source.y + 0.03, 0.04, 0.96),
     trail: [],
   };
   flies.push(copy);
-  addEvent("agent", `Forked ${source.name} → ${copy.name}.`);
+
+  if (runtimeStatus === "ready") {
+    const sourceState = neural.get(sourceId);
+    const state = createNeuralState(seed);
+    if (sourceState) {
+      state.brain.copyStateFrom(sourceState.brain);
+      state.previousFired = sourceState.previousFired.slice();
+      state.dnTrace = sourceState.dnTrace;
+      state.motorSmooth = { ...sourceState.motorSmooth };
+      state.previousSize = { ...sourceState.previousSize };
+      state.pending = sourceState.pending.map((item) => ({
+        idx: item.idx.slice(),
+        amount: item.amount,
+      }));
+      state.silenced = new Set(sourceState.silenced);
+      rebuildBlocked(state);
+    }
+    neural.set(id, state);
+  }
+
+  addEvent("agent", `Forked ${source.name} → ${copy.name} with copied neural state.`);
   return publicFly(copy);
 }
 
 function applyIntervention(fly: LocalFly, body: any) {
   const kind = String(body?.type ?? "");
   const target = String(body?.target ?? "");
+  const state = neural.get(fly.id);
+
+  if (!state || !neuralGroups) {
+    throw new Error("Real connectome must finish loading before neural interventions");
+  }
+
   const row = {
     type: kind,
     target: target || null,
@@ -884,22 +1860,147 @@ function applyIntervention(fly: LocalFly, body: any) {
     active: true,
   };
 
-  if (kind === "silence_population" && target && !fly.silenced.includes(target)) {
-    fly.silenced.push(target);
-  } else if (kind === "restore_population" && target) {
-    fly.silenced = fly.silenced.filter((name) => name !== target);
-  } else if (kind === "stimulate_population") {
+  if (kind === "stimulate_population") {
+    const idx = neuralGroups.populations[target];
+    if (!target || !idx?.length) {
+      throw new Error(`Unknown or empty population: ${target}`);
+    }
+    state.pending.push({ idx, amount: row.amount });
+    row.active = false;
     challenge.actions += 1;
-    fly.dn_activity = clamp(fly.dn_activity + Number(body?.amount ?? 0.8) * 0.08);
+  } else if (kind === "silence_population") {
+    const idx = neuralGroups.populations[target];
+    if (!target || !idx?.length) {
+      throw new Error(`Unknown or empty population: ${target}`);
+    }
+    state.silenced.add(target);
+    fly.silenced = [...state.silenced];
+    rebuildBlocked(state);
+  } else if (kind === "restore_population") {
+    state.silenced.delete(target);
+    fly.silenced = [...state.silenced];
+    rebuildBlocked(state);
+    row.active = false;
   } else if (kind === "random_synapse_lesion") {
-    fly.lesionFraction = clamp(fly.lesionFraction + Number(body?.fraction ?? 0.1), 0, 0.9);
-    unlockAchievement("chaos_theory", "CHAOS THEORY", "Applied a seeded random lesion.");
+    const changed = state.brain.lesion(row.fraction, row.seed);
+    fly.lesionFraction = clamp(
+      fly.lesionFraction + row.fraction,
+      0,
+      1,
+    );
+    (row as any).synapses_lesioned = changed;
+    unlockAchievement(
+      "chaos_theory",
+      "CHAOS THEORY",
+      "Applied a seeded random lesion.",
+    );
+  } else {
+    throw new Error(`Unsupported intervention: ${kind}`);
   }
 
-  fly.interventions = [...fly.interventions, row];
-  unlockAchievement("brain_surgeon", "BRAIN SURGEON", "Applied a neural intervention.");
-  addEvent("neural", `${fly.name}: ${kind}${target ? ` ${target}` : ""}.`);
+  fly.interventions = [...fly.interventions, row].slice(-32);
+  unlockAchievement(
+    "brain_surgeon",
+    "BRAIN SURGEON",
+    "Applied a neural intervention.",
+  );
+  addEvent(
+    "neural",
+    `${fly.name}: ${kind}${target ? ` ${target}` : ""}.`,
+  );
   return row;
+}
+
+async function runBatchProbe(body: any) {
+  if (!connectomeMeta || !connectomeWeights || !neuralGroups) {
+    throw new Error("Real connectome is not ready");
+  }
+
+  const population = String(body?.population ?? "LC4");
+  const idx = neuralGroups.populations[population];
+  if (!idx?.length) {
+    throw new Error(`Unknown or empty population: ${population}`);
+  }
+
+  const amount = Number(body?.amount ?? 0.8);
+  const steps = Math.max(1, Math.min(200, Number(body?.steps ?? 50)));
+  const replicates = Math.max(
+    1,
+    Math.min(8, Number(body?.replicates ?? 4)),
+  );
+  const seed = Number(body?.seed ?? world.seed);
+  const traceDecay = Math.exp(-connectomeMeta.params.dt / 0.1);
+  const rows: any[] = [];
+
+  for (let replicate = 0; replicate < replicates; replicate++) {
+    const brain = new ConnectomeBrain(
+      connectomeWeights,
+      connectomeMeta.params,
+      seed + replicate,
+    );
+    let totalSpikes = 0;
+    let trace = 0;
+    let traceSum = 0;
+    let tracePeak = 0;
+
+    for (let step = 0; step < steps; step++) {
+      brain.stimulate(idx, amount);
+      const fired = Int32Array.from(brain.step());
+      totalSpikes += fired.length;
+      const dnCount = countIntersection(fired, neuralGroups.dn);
+      trace =
+        trace * traceDecay +
+        dnCount / Math.max(1, neuralGroups.dn.length);
+      traceSum += trace;
+      tracePeak = Math.max(tracePeak, trace);
+
+      if (step % 10 === 9) {
+        await new Promise<void>((resolve) => setTimeout(resolve, 0));
+      }
+    }
+
+    const duration = steps * connectomeMeta.params.dt;
+    rows.push({
+      replicate,
+      mean_firing_per_step: totalSpikes / steps,
+      mean_firing_hz_total: totalSpikes / duration,
+      mean_dn_trace: traceSum / steps,
+      peak_dn_trace: tracePeak,
+    });
+  }
+
+  const meanTrace =
+    rows.reduce((sum, row) => sum + row.mean_dn_trace, 0) /
+    rows.length;
+  const variance =
+    rows.reduce(
+      (sum, row) =>
+        sum + (row.mean_dn_trace - meanTrace) ** 2,
+      0,
+    ) / rows.length;
+
+  return {
+    population,
+    population_neurons: idx.length,
+    amount,
+    steps,
+    dt: connectomeMeta.params.dt,
+    duration: steps * connectomeMeta.params.dt,
+    replicates,
+    seed,
+    rows,
+    summary: {
+      mean_firing_per_step:
+        rows.reduce(
+          (sum, row) => sum + row.mean_firing_per_step,
+          0,
+        ) / rows.length,
+      mean_dn_trace: meanTrace,
+      sd_dn_trace: Math.sqrt(variance),
+    },
+    provenance:
+      "Real MaleCNS/FlyBrain browser simulation; web-export synaptic weights use FlyBrain's log-quantized encoding.",
+  };
 }
 
 function runConsole(command: string) {
@@ -908,10 +2009,14 @@ function runConsole(command: string) {
 
   const verb = parts[0].toLowerCase();
   if (verb === "pause") running = false;
-  else if (verb === "resume" || verb === "play") running = true;
-  else if (verb === "fork") return forkFly("prime");
-  else if (verb === "random") return randomWorld(Number(parts[1] ?? world.seed));
-  else if (verb === "challenge") {
+  else if (verb === "resume" || verb === "play") {
+    resumeWhenReady = true;
+    running = runtimeStatus === "ready";
+  } else if (verb === "fork") {
+    return forkFly("prime");
+  } else if (verb === "random") {
+    return randomWorld(Number(parts[1] ?? world.seed));
+  } else if (verb === "challenge") {
     challenge = challengeState(parts[1] ?? "sandbox");
     return clone(challenge);
   } else if (verb === "spawn") {
@@ -920,7 +2025,11 @@ function runConsole(command: string) {
       x: Number(parts[2] ?? 0.5),
       y: Number(parts[3] ?? 0.5),
     });
-  } else if (verb === "stim" || verb === "silence" || verb === "restore") {
+  } else if (
+    verb === "stim" ||
+    verb === "silence" ||
+    verb === "restore"
+  ) {
     return applyIntervention(findFly("prime"), {
       type:
         verb === "stim"
@@ -938,7 +2047,39 @@ function runConsole(command: string) {
   return { ok: true };
 }
 
-async function rpc(method: RpcRequest["method"], rawPath: string, body?: any) {
+function resetSandbox() {
+  const controller =
+    flies.find((fly) => fly.id === "prime")?.controller ?? "play";
+  running = false;
+  resumeWhenReady = false;
+  t = 0;
+  speedAccumulator = 0;
+  world = makeWorld(world.seed);
+  flies = [makeFly("prime", "PRIME", true, "fly", world.seed)];
+  flies[0].controller = controller;
+  events = [
+    {
+      t: 0,
+      kind: "system",
+      message:
+        runtimeStatus === "ready"
+          ? "Browser FlyBrain sandbox reset."
+          : "Sandbox reset while connectome is loading.",
+    },
+  ];
+  couplings = [];
+  achievements = [];
+  checkpoints = [];
+  challenge = challengeState("sandbox");
+  neural.clear();
+  if (runtimeStatus === "ready") attachNeural(flies[0]);
+}
+
+async function rpc(
+  method: RpcRequest["method"],
+  rawPath: string,
+  body?: any,
+) {
   const { path, query } = parsePath(rawPath);
 
   if (method === "GET") {
@@ -946,23 +2087,25 @@ async function rpc(method: RpcRequest["method"], rawPath: string, body?: any) {
     if (path === "/api/metadata") return metadata();
     if (path === "/api/experiments/export") {
       return {
-        runtime: "browser-worker-compatibility",
+        runtime: "browser-flybrain",
         exported_at: new Date().toISOString(),
         state: snapshot(),
       };
     }
 
     let match = path.match(/^\/api\/populations\/([^/]+)$/);
-    if (match) return { populations: populationStatus(findFly(match[1])) };
+    if (match) {
+      return { populations: populationStatus(findFly(match[1])) };
+    }
 
     match = path.match(/^\/api\/brain\/([^/]+)\/sample$/);
     if (match) {
       findFly(match[1]);
       return {
-        kind: "mock-unavailable",
+        kind: "real-connectome-no-soma-web-export",
         projection: null,
         mapped: 0,
-        neurons: NEURONS,
+        neurons: connectomeMeta?.n ?? EXPECTED_NEURONS,
         points: [],
       };
     }
@@ -970,29 +2113,31 @@ async function rpc(method: RpcRequest["method"], rawPath: string, body?: any) {
 
   if (method === "POST") {
     if (path === "/api/simulation/resume") {
-      running = true;
-      return { running };
+      resumeWhenReady = true;
+      running = runtimeStatus === "ready";
+      return {
+        running,
+        waiting_for_connectome: runtimeStatus !== "ready",
+      };
     }
+
     if (path === "/api/simulation/pause") {
+      resumeWhenReady = false;
       running = false;
       return { running };
     }
+
     if (path === "/api/simulation/step") {
-      advance(DT);
+      if (runtimeStatus !== "ready") {
+        throw new Error("Connectome is still loading");
+      }
+      advance();
       emitFrame();
       return framePayload();
     }
+
     if (path === "/api/simulation/reset") {
-      const wasRunning = running;
-      t = 0;
-      world = makeWorld(world.seed);
-      flies = [makeFly("prime", "PRIME", true, "fly")];
-      events = [{ t: 0, kind: "system", message: "Browser sandbox reset." }];
-      couplings = [];
-      achievements = [];
-      checkpoints = [];
-      challenge = challengeState("sandbox");
-      running = wasRunning;
+      resetSandbox();
       emitFrame();
       return framePayload();
     }
@@ -1001,9 +2146,12 @@ async function rpc(method: RpcRequest["method"], rawPath: string, body?: any) {
     if (match) {
       const next = Number(match[1]);
       if (![0.05, 0.25, 1, 2, 5, 10].includes(next)) {
-        throw new Error("Speed must be 0.05, 0.25, 1, 2, 5, or 10");
+        throw new Error(
+          "Speed must be 0.05, 0.25, 1, 2, 5, or 10",
+        );
       }
       speed = next;
+      speedAccumulator = 0;
       return { speed };
     }
 
@@ -1023,16 +2171,22 @@ async function rpc(method: RpcRequest["method"], rawPath: string, body?: any) {
     if (match) {
       const fly = findFly(match[1]);
       const bodyType = match[2] as BodyType;
-      if (!BODIES.includes(bodyType)) throw new Error(`Unknown body: ${bodyType}`);
+      if (!BODIES.includes(bodyType)) {
+        throw new Error(`Unknown body: ${bodyType}`);
+      }
       fly.body_type = bodyType;
       return { ok: true, body_type: bodyType };
     }
 
-    match = path.match(/^\/api\/flies\/([^/]+)\/controller\/([^/]+)$/);
+    match = path.match(
+      /^\/api\/flies\/([^/]+)\/controller\/([^/]+)$/,
+    );
     if (match) {
       const fly = findFly(match[1]);
       const controller = match[2] as Controller;
-      if (!["play", "lab"].includes(controller)) throw new Error("Unknown controller");
+      if (!["play", "lab"].includes(controller)) {
+        throw new Error("Unknown controller");
+      }
       fly.controller = controller;
       return { ok: true, controller };
     }
@@ -1040,8 +2194,16 @@ async function rpc(method: RpcRequest["method"], rawPath: string, body?: any) {
     match = path.match(/^\/api\/flies\/([^/]+)\/move$/);
     if (match) {
       const fly = findFly(match[1]);
-      fly.x = clamp(Number(query.get("x") ?? fly.x), 0.02, 0.98);
-      fly.y = clamp(Number(query.get("y") ?? fly.y), 0.02, 0.98);
+      fly.x = clamp(
+        Number(query.get("x") ?? fly.x),
+        0.02,
+        0.98,
+      );
+      fly.y = clamp(
+        Number(query.get("y") ?? fly.y),
+        0.02,
+        0.98,
+      );
       return { ok: true };
     }
 
@@ -1049,15 +2211,23 @@ async function rpc(method: RpcRequest["method"], rawPath: string, body?: any) {
     if (match) {
       const fly = findFly(match[1]);
       fly.manualTurn = clamp(Number(body?.turn ?? 0), -1, 1);
-      fly.manualThrottle = clamp(Number(body?.throttle ?? 0), -1, 1);
+      fly.manualThrottle = clamp(
+        Number(body?.throttle ?? 0),
+        -1,
+        1,
+      );
       fly.manualUntil = t + 0.2;
       return { ok: true };
     }
 
-    match = path.match(/^\/api\/flies\/([^/]+)\/interventions$/);
+    match = path.match(
+      /^\/api\/flies\/([^/]+)\/interventions$/,
+    );
     if (match) return applyIntervention(findFly(match[1]), body);
 
-    match = path.match(/^\/api\/flies\/([^/]+)\/sensory-gain\/([0-9.]+)$/);
+    match = path.match(
+      /^\/api\/flies\/([^/]+)\/sensory-gain\/([0-9.]+)$/,
+    );
     if (match) {
       const fly = findFly(match[1]);
       fly.sensoryGain = clamp(Number(match[2]), 0, 2);
@@ -1065,7 +2235,11 @@ async function rpc(method: RpcRequest["method"], rawPath: string, body?: any) {
     }
 
     if (path === "/api/world/environment") {
-      world.daylight = clamp(Number(body?.daylight ?? world.daylight), 0, 1);
+      world.daylight = clamp(
+        Number(body?.daylight ?? world.daylight),
+        0,
+        1,
+      );
       world.wind_x = Number(body?.wind_x ?? world.wind_x);
       world.wind_y = Number(body?.wind_y ?? world.wind_y);
       return framePayload();
@@ -1075,8 +2249,12 @@ async function rpc(method: RpcRequest["method"], rawPath: string, body?: any) {
 
     match = path.match(/^\/api\/world\/([^/]+)\/move$/);
     if (match) {
-      const obj = world.objects.find((item) => item.id === match[1]);
-      if (!obj) throw new Error(`Unknown world object: ${match[1]}`);
+      const obj = world.objects.find(
+        (item) => item.id === match![1],
+      );
+      if (!obj) {
+        throw new Error(`Unknown world object: ${match[1]}`);
+      }
       obj.x = clamp(Number(query.get("x") ?? obj.x));
       obj.y = clamp(Number(query.get("y") ?? obj.y));
       return { ok: true };
@@ -1099,13 +2277,37 @@ async function rpc(method: RpcRequest["method"], rawPath: string, body?: any) {
     }
 
     if (path === "/api/couplings") {
+      if (!neuralGroups) throw new Error("Connectome is still loading");
+
+      const population = String(body?.population ?? "LC10a");
+      if (!neuralGroups.populations[population]?.length) {
+        throw new Error(
+          `Unknown or empty coupling population: ${population}`,
+        );
+      }
+
+      const source = String(body?.source ?? "prime");
+      const target = String(body?.target ?? "");
+      if (source === target) {
+        throw new Error("source and target must be different agents");
+      }
+      findFly(source);
+      findFly(target);
+
       const coupling = {
-        source: String(body?.source ?? "prime"),
-        target: String(body?.target ?? ""),
-        population: String(body?.population ?? "LC10a"),
+        source,
+        target,
+        population,
         gain: Number(body?.gain ?? 0.5),
-        kind: "browser-compatibility",
+        kind: "experimental_artificial_coupling",
       };
+      couplings = couplings.filter(
+        (item) =>
+          !(
+            item.source === coupling.source &&
+            item.target === coupling.target
+          ),
+      );
       couplings.push(coupling);
       return clone(coupling);
     }
@@ -1113,7 +2315,10 @@ async function rpc(method: RpcRequest["method"], rawPath: string, body?: any) {
     if (path === "/api/challenges/mystery/reveal") {
       mysteryRevealed = true;
       challenge.secret_hidden = false;
-      return { secret: "Browser compatibility runtime does not hide a real neural intervention yet." };
+      return {
+        secret:
+          "Browser mode keeps the mystery challenge interface but does not invent a hidden intervention.",
+      };
     }
 
     match = path.match(/^\/api\/challenges\/([^/]+)$/);
@@ -1123,7 +2328,9 @@ async function rpc(method: RpcRequest["method"], rawPath: string, body?: any) {
       return clone(challenge);
     }
 
-    if (path === "/api/console") return runConsole(String(body?.command ?? ""));
+    if (path === "/api/console") {
+      return runConsole(String(body?.command ?? ""));
+    }
 
     if (path === "/api/time/checkpoint") {
       const checkpoint: Checkpoint = {
@@ -1133,16 +2340,22 @@ async function rpc(method: RpcRequest["method"], rawPath: string, body?: any) {
         snapshot: snapshot(),
       };
       checkpoints.push(checkpoint);
-      if (checkpoints.length > 12) checkpoints = checkpoints.slice(-12);
-      return { id: checkpoint.id, label: checkpoint.label, t: checkpoint.t };
+      if (checkpoints.length > 8) checkpoints = checkpoints.slice(-8);
+      return {
+        id: checkpoint.id,
+        label: checkpoint.label,
+        t: checkpoint.t,
+      };
     }
 
     if (path === "/api/time/rewind") {
-      const requested = query.get("checkpoint_id") ?? body?.checkpoint_id;
+      const requested =
+        query.get("checkpoint_id") ?? body?.checkpoint_id;
       const checkpoint = requested
         ? checkpoints.find((item) => item.id === requested)
         : checkpoints.at(-1);
       if (!checkpoint) throw new Error("No checkpoint available");
+
       restore(checkpoint.snapshot);
       addEvent("time", `Rewound to ${checkpoint.label}.`);
       emitFrame();
@@ -1160,15 +2373,7 @@ async function rpc(method: RpcRequest["method"], rawPath: string, body?: any) {
     }
 
     if (path === "/api/batch/probe") {
-      return {
-        mock: true,
-        population: String(body?.population ?? "LC4"),
-        population_neurons: POPULATIONS[String(body?.population ?? "LC4")] ?? 0,
-        steps: Number(body?.steps ?? 50),
-        replicates: Number(body?.replicates ?? 4),
-        seed: Number(body?.seed ?? world.seed),
-        summary: { mean_dn_trace: 0, sd_dn_trace: 0 },
-      };
+      return runBatchProbe(body);
     }
   }
 
@@ -1177,6 +2382,7 @@ async function rpc(method: RpcRequest["method"], rawPath: string, body?: any) {
       world.objects = [];
       return { ok: true };
     }
+
     if (path === "/api/couplings") {
       couplings = [];
       return { ok: true };
@@ -1184,19 +2390,30 @@ async function rpc(method: RpcRequest["method"], rawPath: string, body?: any) {
 
     let match = path.match(/^\/api\/world\/([^/]+)$/);
     if (match) {
-      world.objects = world.objects.filter((obj) => obj.id !== match[1]);
+      world.objects = world.objects.filter(
+        (obj) => obj.id !== match![1],
+      );
       return { ok: true };
     }
 
     match = path.match(/^\/api\/flies\/([^/]+)$/);
     if (match) {
-      if (match[1] === "prime") throw new Error("PRIME cannot be removed");
-      flies = flies.filter((fly) => fly.id !== match[1]);
+      if (match[1] === "prime") {
+        throw new Error("PRIME cannot be removed");
+      }
+      flies = flies.filter((fly) => fly.id !== match![1]);
+      neural.delete(match[1]);
+      couplings = couplings.filter(
+        (link) =>
+          link.source !== match![1] && link.target !== match![1],
+      );
       return { ok: true };
     }
   }
 
-  throw new Error(`Unsupported browser API route: ${method} ${rawPath}`);
+  throw new Error(
+    `Unsupported browser API route: ${method} ${rawPath}`,
+  );
 }
 
 scope.onmessage = async (event: MessageEvent<InboundMessage>) => {
@@ -1216,7 +2433,11 @@ scope.onmessage = async (event: MessageEvent<InboundMessage>) => {
 
   if (message.type === "rpc") {
     try {
-      const data = await rpc(message.method, message.path, message.body);
+      const data = await rpc(
+        message.method,
+        message.path,
+        message.body,
+      );
       scope.postMessage({
         type: "rpc_result",
         id: message.id,
@@ -1229,13 +2450,24 @@ scope.onmessage = async (event: MessageEvent<InboundMessage>) => {
         type: "rpc_result",
         id: message.id,
         ok: false,
-        error: error instanceof Error ? error.message : String(error),
+        error:
+          error instanceof Error ? error.message : String(error),
       });
     }
   }
 };
 
 setInterval(() => {
-  if (running) advance(DT * speed);
+  if (running && runtimeStatus === "ready") {
+    speedAccumulator += speed;
+    const steps = Math.min(10, Math.floor(speedAccumulator));
+    if (steps > 0) {
+      speedAccumulator -= steps;
+      for (let i = 0; i < steps; i++) advance();
+    }
+  }
+
   emitFrame();
-}, 50);
+}, 20);
+
+void bootConnectome();
