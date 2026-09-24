@@ -2159,6 +2159,7 @@ function startChallenge(id: string) {
       fly.trail = [];
     });
   } else if (id === "tournament") {
+    removeNonPrimeFlies();
     clearWorldObjects();
     for (const [x, y] of [[0.22,0.22],[0.78,0.22],[0.22,0.78],[0.78,0.78],[0.50,0.50]] as Array<[number,number]>) {
       addWorldObject({ kind: "food", x, y, intensity: 1, radius: 0.025, amount: 1 });
@@ -2220,7 +2221,24 @@ function startChallenge(id: string) {
     const mystery = flies.find((fly) => !fly.is_prime);
     if (!mystery) throw new Error("Could not create mystery agent");
     mystery.name = "MYSTERY";
-    applyIntervention(mystery, { type: "silence_population", target });
+    const mysteryState = neural.get(mystery.id);
+    const mysteryPopulation = neuralGroups?.populations[target];
+    if (!mysteryState || !mysteryPopulation?.length) {
+      throw new Error("Mystery intervention could not be prepared");
+    }
+    mysteryState.silenced.add(target);
+    mystery.silenced = [...mysteryState.silenced];
+    rebuildBlocked(mysteryState);
+    mystery.interventions = [
+      ...mystery.interventions,
+      {
+        type: "silence_population",
+        target,
+        time: t,
+        active: true,
+        hidden: true,
+      },
+    ].slice(-32);
     mysterySecret = {
       fly_id: mystery.id,
       type: "silence_population",
