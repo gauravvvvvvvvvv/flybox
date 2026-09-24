@@ -225,6 +225,18 @@ function hash32(value: number, seed: number) {
   return (x ^ (x >>> 16)) >>> 0;
 }
 
+function lesionByteLength(edges: number) {
+  return Math.ceil(edges / 8);
+}
+
+function lesionHas(mask: Uint8Array, edge: number) {
+  return (mask[edge >> 3] & (1 << (edge & 7))) !== 0;
+}
+
+function lesionSet(mask: Uint8Array, edge: number) {
+  mask[edge >> 3] |= 1 << (edge & 7);
+}
+
 export class ConnectomeBrain {
   readonly n: number;
   readonly v: Float32Array;
@@ -276,7 +288,7 @@ export class ConnectomeBrain {
           edge < colPtr[presynaptic + 1];
           edge++
         ) {
-          if (!lesions[edge]) {
+          if (!lesionHas(lesions, edge)) {
             current[rowIdx[edge]] += lut[code[edge]];
           }
         }
@@ -341,15 +353,15 @@ export class ConnectomeBrain {
     if (bounded <= 0) return 0;
 
     if (!this.lesionMask) {
-      this.lesionMask = new Uint8Array(this.weights.nnz);
+      this.lesionMask = new Uint8Array(lesionByteLength(this.weights.nnz));
     }
 
     const threshold = bounded * 4294967296;
     let changed = 0;
-    for (let edge = 0; edge < this.lesionMask.length; edge++) {
-      if (this.lesionMask[edge]) continue;
+    for (let edge = 0; edge < this.weights.nnz; edge++) {
+      if (lesionHas(this.lesionMask, edge)) continue;
       if (hash32(edge, seed) < threshold) {
-        this.lesionMask[edge] = 1;
+        lesionSet(this.lesionMask, edge);
         changed++;
       }
     }
@@ -380,12 +392,27 @@ export class ConnectomeBrain {
       snapshot.fired instanceof Int32Array
         ? snapshot.fired
         : Int32Array.from(snapshot.fired);
-    const lesions =
+    let lesions =
       snapshot.lesionMask == null
         ? null
         : snapshot.lesionMask instanceof Uint8Array
           ? snapshot.lesionMask
           : Uint8Array.from(snapshot.lesionMask);
+
+    // Compatibility with browser exports/checkpoints created before the lesion
+    // mask was compacted to one bit per synapse.
+    if (lesions && lesions.length === this.weights.nnz) {
+      const packed = new Uint8Array(lesionByteLength(this.weights.nnz));
+      for (let edge = 0; edge < lesions.length; edge++) {
+        if (lesions[edge]) lesionSet(packed, edge);
+      }
+      lesions = packed;
+    } else if (
+      lesions &&
+      lesions.length !== lesionByteLength(this.weights.nnz)
+    ) {
+      throw new Error("Checkpoint lesion mask does not match this connectome");
+    }
 
     this.v.set(snapshot.v);
     this.drive.fill(0);
