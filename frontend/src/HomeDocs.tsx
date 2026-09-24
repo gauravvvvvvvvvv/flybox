@@ -122,12 +122,12 @@ export default function HomeDocs({ onEnter, runtime }: { onEnter: EnterHandler; 
               ? "BRAIN READY"
               : runtime?.status === "error"
                 ? "BRAIN LOAD ERROR"
-                : "PREPARING BRAIN IN THE BACKGROUND"}
+                : "BRAIN LOADS LOCALLY WHEN YOU OPEN THE SANDBOX"}
           </span>
         </div>
         <div className="home-stat-row">
           <div><strong>166,700</strong><span>NEURONS</span></div>
-          <div><strong>25.09M</strong><span>BROWSER GRAPH EDGES</span></div>
+          <div><strong>25.58M</strong><span>BROWSER GRAPH EDGES</span></div>
           <div><strong>20 ms</strong><span>NEURAL STEP</span></div>
           <div><strong>EPHEMERAL</strong><span>NO ACCOUNTS / NO SAVED SESSION</span></div>
         </div>
