@@ -730,7 +730,7 @@ Exact browser neural-state fork copies:
 - energy
 - trajectory/game state
 
-Exact CUDA state copying is not claimed until validated.
+The optional Python/CUDA reference backend has separate state-copying constraints.
 
 ---
 
@@ -738,7 +738,7 @@ Exact CUDA state copying is not claimed until validated.
 
 ## SAVE MOMENT
 
-On CPU/mock:
+In the browser runtime:
 
 stores a bounded checkpoint containing:
 
@@ -836,7 +836,7 @@ When multiple agents exist:
 
 ## Batch science probe
 
-Real FlyBrain only.
+Runs locally against the real browser FlyBrain graph.
 
 Runs multiple neural states with:
 
