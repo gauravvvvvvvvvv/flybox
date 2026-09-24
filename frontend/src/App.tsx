@@ -64,7 +64,6 @@ export default function App() {
   }, []);
 
   useEffect(() => {
-    if (!entered) return;
     return connectFrames(
       (data) => {
         setFrame(data);
@@ -72,7 +71,7 @@ export default function App() {
       },
       (message) => setError(message),
     );
-  }, [entered]);
+  }, []);
 
   useEffect(() => {
     if (!entered) return;
@@ -257,6 +256,7 @@ export default function App() {
   if (!entered) {
     return (
       <HomeDocs
+        runtime={frame?.runtime}
         onEnter={() => {
           setEntered(true);
           post("/api/simulation/resume").catch((e) => setError(e instanceof Error ? e.message : String(e)));
