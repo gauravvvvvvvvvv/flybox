@@ -142,6 +142,13 @@ export default function App() {
     [frame, selectedFly],
   );
 
+  useEffect(() => {
+    if (!frame?.flies.length) return;
+    if (!frame.flies.some((item) => item.id === selectedFly)) {
+      setSelectedFly(frame.flies[0].id);
+    }
+  }, [frame?.flies, selectedFly]);
+
   const runtimeStatus = frame?.runtime?.status;
   const statusText =
     runtimeStatus === "loading"

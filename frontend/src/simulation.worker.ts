@@ -2017,10 +2017,10 @@ function applyIntervention(fly: LocalFly, body: any) {
     throw new Error("Real connectome must finish loading before neural interventions");
   }
 
-  if (challenge.id === "hijack") {
+  if (challenge.id === "hijack" && kind === "stimulate_population") {
     const budget = challenge.budget ?? 5;
     if (challenge.actions >= budget) {
-      throw new Error(`Challenge budget exhausted (${budget} actions)`);
+      throw new Error(`Challenge stimulation budget exhausted (${budget})`);
     }
   }
 
@@ -2058,7 +2058,7 @@ function applyIntervention(fly: LocalFly, body: any) {
   } else if (kind === "random_synapse_lesion") {
     const changed = state.brain.lesion(row.fraction, row.seed);
     fly.lesionFraction = clamp(
-      fly.lesionFraction + (1 - fly.lesionFraction) * row.fraction,
+      fly.lesionFraction + changed / Math.max(1, state.brain.weights.nnz),
       0,
       1,
     );
@@ -2161,7 +2161,14 @@ function startChallenge(id: string) {
   } else if (id === "tournament") {
     removeNonPrimeFlies();
     clearWorldObjects();
-    for (const [x, y] of [[0.22,0.22],[0.78,0.22],[0.22,0.78],[0.78,0.78],[0.50,0.50]] as Array<[number,number]>) {
+    const tournamentFood: Array<[number, number]> = [
+      [0.18,0.18],[0.50,0.16],[0.82,0.18],
+      [0.24,0.34],[0.50,0.34],[0.76,0.34],
+      [0.18,0.50],[0.50,0.50],[0.82,0.50],
+      [0.24,0.66],[0.50,0.66],[0.76,0.66],
+      [0.18,0.82],[0.50,0.84],[0.82,0.82],
+    ];
+    for (const [x, y] of tournamentFood) {
       addWorldObject({ kind: "food", x, y, intensity: 1, radius: 0.025, amount: 1 });
     }
     const bodies: BodyType[] = ["bot", "car"];
