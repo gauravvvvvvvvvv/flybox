@@ -249,10 +249,8 @@ const EXPECTED_NEURONS = 166_700;
 const EXPECTED_SYNAPSES = 25_582_938;
 const DT = 0.02;
 const MAX_FLIES = 4;
-const UPSTREAM_CONNECTOME =
-  "https://raw.githubusercontent.com/alextitonis/fly.ai/03358c075000af5379e405b244dd31f1a0fd1401/world/public/connectome/";
 const CONNECTOME_BASE = String(
-  import.meta.env.VITE_CONNECTOME_BASE ?? UPSTREAM_CONNECTOME,
+  import.meta.env.VITE_CONNECTOME_BASE ?? "/connectome/",
 );
 const SOMA_BASE = String(
   import.meta.env.VITE_SOMA_BASE ?? "/connectome/",
