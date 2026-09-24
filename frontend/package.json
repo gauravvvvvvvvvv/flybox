@@ -7,7 +7,8 @@
     "dev": "vite",
     "build": "vite build",
     "typecheck": "tsc --noEmit",
-    "check": "tsc --noEmit"
+    "check": "tsc --noEmit",
+    "fetch:connectome": "node ../scripts/fetch-browser-connectome.mjs"
   },
   "dependencies": {
     "@vitejs/plugin-react": "^4.3.4",
