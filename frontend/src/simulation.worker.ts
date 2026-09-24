@@ -263,7 +263,7 @@ let checkpoints: Checkpoint[] = [];
 
 let t = 0;
 let running = false;
-let resumeWhenReady = false;
+let resumeWhenReady = true;
 let speed = 1;
 let speedAccumulator = 0;
 
