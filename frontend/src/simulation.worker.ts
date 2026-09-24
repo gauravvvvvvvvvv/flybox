@@ -275,6 +275,15 @@ let runtimeProgress = "waiting";
 let runtimeError: string | null = null;
 let runtimeWeightsMb = 0;
 
+type SomaStore = {
+  n: number;
+  mapped: number;
+  coords: Uint16Array;
+  sample: [number, number, number, number][];
+};
+
+let somaStore: SomaStore | null = null;
+
 let world: Frame["world"] = makeWorld(64);
 let flies: LocalFly[] = [makeFly("prime", "PRIME", true, "fly", 64)];
 let events: Frame["events"] = [
@@ -316,6 +325,97 @@ function hashString(value: string) {
 function uid(prefix: string, counter: number) {
   return `${prefix}-${counter.toString(36)}`;
 }
+
+function somaPoint(neuronId: number): [number, number, number, number] | null {
+  if (!somaStore || neuronId < 0 || neuronId >= somaStore.n) return null;
+  const offset = neuronId * 3;
+  const x = somaStore.coords[offset];
+  const y = somaStore.coords[offset + 1];
+  const z = somaStore.coords[offset + 2];
+  if (x === 65535 || y === 65535 || z === 65535) return null;
+  return [neuronId, x / 65534, y / 65534, z / 65534];
+}
+
+function buildSomaSample(store: SomaStore, limit = 3500) {
+  const valid: number[] = [];
+  for (let neuronId = 0; neuronId < store.n; neuronId++) {
+    const offset = neuronId * 3;
+    if (
+      store.coords[offset] !== 65535 &&
+      store.coords[offset + 1] !== 65535 &&
+      store.coords[offset + 2] !== 65535
+    ) {
+      valid.push(neuronId);
+    }
+  }
+
+  if (valid.length <= limit) {
+    return valid.map((id) => somaPoint(id)!).filter(Boolean);
+  }
+
+  const out: [number, number, number, number][] = [];
+  for (let i = 0; i < limit; i++) {
+    const pick = Math.floor((i * (valid.length - 1)) / Math.max(1, limit - 1));
+    const point = somaPoint(valid[pick]);
+    if (point) out.push(point);
+  }
+  return out;
+}
+
+async function loadSoma(base: string): Promise<SomaStore | null> {
+  try {
+    const response = await fetch(new URL("soma.bin", base).toString(), {
+      cache: "force-cache",
+      credentials: "omit",
+    });
+    if (!response.ok) return null;
+
+    const buffer = await response.arrayBuffer();
+    if (buffer.byteLength < 16) return null;
+
+    const bytes = new Uint8Array(buffer);
+    if (
+      bytes[0] !== 0x46 ||
+      bytes[1] !== 0x4c ||
+      bytes[2] !== 0x59 ||
+      bytes[3] !== 0x53
+    ) {
+      return null;
+    }
+
+    const view = new DataView(buffer);
+    const version = view.getUint32(4, true);
+    const n = view.getUint32(8, true);
+    const mapped = view.getUint32(12, true);
+    if (version !== 1 || n !== EXPECTED_NEURONS) return null;
+
+    const expected = 16 + n * 3 * 2;
+    if (buffer.byteLength !== expected) return null;
+
+    const coords = new Uint16Array(buffer, 16, n * 3);
+    const store: SomaStore = { n, mapped, coords, sample: [] };
+    somaStore = store;
+    store.sample = buildSomaSample(store);
+    return store;
+  } catch {
+    return null;
+  }
+}
+
+function firingSomaPositions(
+  fired: Int32Array,
+  limit = 512,
+): [number, number, number, number][] {
+  if (!somaStore || fired.length === 0) return [];
+  const out: [number, number, number, number][] = [];
+  const stride = Math.max(1, Math.floor(fired.length / limit));
+  for (let i = 0; i < fired.length && out.length < limit; i += stride) {
+    const point = somaPoint(fired[i]);
+    if (point) out.push(point);
+  }
+  return out;
+}
+
 
 function makeWorld(seed: number): Frame["world"] {
   return {
@@ -551,10 +651,14 @@ async function bootConnectome() {
   emitFrame();
 
   try {
+    const somaPromise = loadSoma(CONNECTOME_BASE);
     const loaded = await loadConnectome(CONNECTOME_BASE, (progress) => {
       runtimeProgress = progress;
       emitFrame();
     });
+
+    const soma = await somaPromise;
+    somaStore = soma;
 
     connectomeMeta = loaded.meta;
     connectomeWeights = loaded.weights;
@@ -579,6 +683,17 @@ async function bootConnectome() {
       "system",
       `Real browser FlyBrain ready: ${loaded.meta.n.toLocaleString()} neurons / ${loaded.weights.nnz.toLocaleString()} synapses.`,
     );
+    if (somaStore) {
+      addEvent(
+        "system",
+        `3D anatomy ready: ${somaStore.mapped.toLocaleString()} real MaleCNS soma positions.`,
+      );
+    } else {
+      addEvent(
+        "system",
+        "3D anatomy asset not found; run npm run fetch:soma and use VITE_CONNECTOME_BASE=/connectome/.",
+      );
+    }
 
     if (resumeWhenReady) running = true;
     emitFrame();
@@ -1379,9 +1494,9 @@ function stepFly(fly: LocalFly, stepDt: number) {
   fly.dn_fired = result.dnFired;
   fly.sampled_fired = Array.from(result.fired.subarray(0, 256));
   fly.brain_view = {
-    kind: "real-connectome-no-soma-web-export",
-    mapped: 0,
-    firing_positions: [],
+    kind: somaStore ? "anatomical" : "real-connectome-no-soma-web-export",
+    mapped: somaStore?.mapped ?? 0,
+    firing_positions: firingSomaPositions(result.fired),
   };
 
   if (t - (fly.trail.at(-1)?.t ?? -Infinity) >= 0.08) {
@@ -2119,11 +2234,13 @@ async function rpc(
     if (match) {
       findFly(match[1]);
       return {
-        kind: "real-connectome-no-soma-web-export",
-        projection: null,
-        mapped: 0,
+        kind: somaStore ? "anatomical" : "real-connectome-no-soma-web-export",
+        projection: somaStore
+          ? "MaleCNS soma positions in normalized EM x/y/z coordinates"
+          : null,
+        mapped: somaStore?.mapped ?? 0,
         neurons: connectomeMeta?.n ?? EXPECTED_NEURONS,
-        points: [],
+        points: somaStore?.sample ?? [],
       };
     }
   }
