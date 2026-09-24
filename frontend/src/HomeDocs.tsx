@@ -1,4 +1,5 @@
 import type { ReactNode } from "react";
+import type { RuntimeState } from "./types";
 
 type EnterHandler = () => void;
 
@@ -27,7 +28,7 @@ const BEHAVIOR = [
 
 const MODES = [
   ["PLAY", "The fun layer. Real FlyBrain neural activity runs underneath, while clearly labeled game assists make the body forage, orient, avoid threats/walls, explore, feed, race, and survive."],
-  ["LAB", "The inspection layer. See real simulated firing, named motor populations, sensory channels, interventions, divergence, and batch probes. The compact browser export currently lacks soma XYZ metadata, so FLYBOX does not invent anatomy. PURE LAB removes the PLAY locomotion assists."],
+  ["LAB", "The inspection layer. See real simulated firing, named motor populations, sensory channels, interventions, divergence, batch probes, and real MaleCNS soma anatomy when the compact anatomy asset is present. PURE LAB removes the PLAY locomotion assists."],
   ["BUILD", "World editor. Place, drag, remove, randomize, and paint elements. Also controls day/night presentation, wind, daily seeded worlds, and ephemeral-session information."],
   ["WEIRD", "Experimental toys: body swaps, neural fireworks, brain tone, brain forks, brain-to-brain artificial coupling, Chaos Button, and Cinema Mode."],
 ] as const;
@@ -83,7 +84,7 @@ function DocsCard({ icon, title, children }: { icon?: string; title: string; chi
   );
 }
 
-export default function HomeDocs({ onEnter }: { onEnter: EnterHandler }) {
+export default function HomeDocs({ onEnter, runtime }: { onEnter: EnterHandler; runtime?: RuntimeState }) {
   return (
     <main className="home-docs">
       <div className="home-doc-grid" />
@@ -113,6 +114,16 @@ export default function HomeDocs({ onEnter }: { onEnter: EnterHandler }) {
           <button className="enter" onClick={onEnter}>OPEN THE SANDBOX</button>
           <a className="home-secondary" href="#controls">QUICK OVERVIEW ↓</a>
           <a className="home-secondary" href="/docs">FULL TECHNICAL DOCS ↗</a>
+        </div>
+        <div className={`home-brain-warmup ${runtime?.status ?? "loading"}`}>
+          <i />
+          <span>
+            {runtime?.status === "ready"
+              ? "BRAIN READY"
+              : runtime?.status === "error"
+                ? "BRAIN LOAD ERROR"
+                : "PREPARING BRAIN IN THE BACKGROUND"}
+          </span>
         </div>
         <div className="home-stat-row">
           <div><strong>166,700</strong><span>NEURONS</span></div>
@@ -244,7 +255,7 @@ export default function HomeDocs({ onEnter }: { onEnter: EnterHandler }) {
           <div><h2>LAB tools</h2><p>Open the simulation instead of only watching the body.</p></div>
         </div>
         <div className="home-doc-grid-cards">
-          <DocsCard title="LIVE CONNECTOME VIEW"><p>Shows live real-connectome firing metrics and population activity. The compact browser export does not yet include soma XYZ positions, so FLYBOX reports anatomy unavailable instead of drawing fake anatomy.</p></DocsCard>
+          <DocsCard title="LIVE CONNECTOME VIEW"><p>Shows live real-connectome firing metrics and population activity, plus real MaleCNS soma XYZ anatomy from the compact browser anatomy asset.</p></DocsCard>
           <DocsCard title="BRAIN SURGERY"><p>Stimulate, silence, or restore named populations. Apply deterministic seeded random synapse lesions.</p></DocsCard>
           <DocsCard title="SENSORY GAIN"><p>Scale how strongly the selected agent receives sandbox sensory injections.</p></DocsCard>
           <DocsCard title="A/B DIVERGENCE"><p>When multiple agents exist, compare firing-set Jaccard divergence, physical separation, and energy differences live.</p></DocsCard>
