@@ -53,7 +53,7 @@ export default function App() {
     get("/api/metadata")
       .then(setMetadata)
       .catch((e) => setError(e instanceof Error ? e.message : String(e)));
-  }, [entered]);
+  }, [entered, frame?.runtime?.status]);
 
   useEffect(() => {
     const discard = () => closeSession();
@@ -68,7 +68,7 @@ export default function App() {
     return connectFrames(
       (data) => {
         setFrame(data);
-        setError(null);
+        setError(data.runtime?.status === "error" ? data.runtime.error ?? "Browser connectome failed to load." : null);
       },
       (message) => setError(message),
     );
@@ -90,6 +90,26 @@ export default function App() {
     () => frame?.flies.find((item) => item.id === selectedFly) ?? frame?.flies[0],
     [frame, selectedFly],
   );
+
+  const runtimeStatus = frame?.runtime?.status;
+  const statusText =
+    runtimeStatus === "loading"
+      ? "LOADING BRAIN"
+      : runtimeStatus === "error"
+        ? "BRAIN ERROR"
+        : frame?.running
+          ? "LIVE"
+          : "PAUSED";
+  const runtimeText =
+    runtimeStatus === "loading"
+      ? frame?.runtime?.progress ?? "loading connectome"
+      : runtimeStatus === "ready"
+        ? "LOCAL CPU · REAL CONNECTOME"
+        : runtimeStatus === "error"
+          ? "CONNECTOME LOAD FAILED"
+          : frame?.mock
+            ? "MOCK MODE"
+            : null;
 
   useEffect(() => {
     if (fly) setNameDraft(fly.name);
@@ -254,9 +274,9 @@ export default function App() {
             <button key={item} className={surface === item ? "active" : ""} onClick={() => setSurface(item)}>{item}</button>
           ))}
         </nav>
-        <div className="status"><span className="live-dot" /> {frame?.running ? "LIVE" : "PAUSED"}</div>
+        <div className="status"><span className="live-dot" /> {statusText}</div>
         <div className="header-stat">{frame?.flies.length ?? 0} AGENTS · {frame?.world.objects.length ?? 0} OBJECTS · EPHEMERAL</div>
-        {frame?.mock && <div className="mock">MOCK MODE</div>}
+        {runtimeText && <div className="mock">{runtimeText}</div>}
       </header>
 
       {error && <div className="error-banner">{error}</div>}
