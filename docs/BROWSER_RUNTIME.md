@@ -1,84 +1,103 @@
-# Browser simulation runtime migration
+# Browser simulation runtime
 
-This branch moves FLYBOX away from paid hosted simulation compute and toward a static-site architecture where each visitor runs their own sandbox locally.
+FLYBOX now has a real client-side FlyBrain path. The host serves static files; the visitor's browser performs neural stepping and world simulation in a Web Worker.
 
-## Target architecture
+## Current architecture
 
 ```text
 static host / CDN
       |
       +-- React/Vite UI
-      +-- connectome data shards
+      +-- FlyBrain web-export assets
+      |     brain.json
+      |     meta.bin
+      |     weights.0.bin
+      |     weights.1.bin
       |
       v
 browser
       |
-      +-- Web Worker (simulation loop)
-      +-- TypedArray / WASM graph runtime
-      +-- optional WebGPU acceleration
-      +-- IndexedDB cache for graph shards
+      +-- Web Worker
+            +-- real MaleCNS graph
+            +-- TypedArray leaky integrate-and-fire stepper
+            +-- sensory encoders
+            +-- named DN motor readout
+            +-- interventions / lesions
+            +-- checkpoints / forks / batch probes
 ```
 
-The production goal is that opening FLYBOX costs the host only static bandwidth. Neural stepping, world updates, interventions, checkpoints, and experiments run on the visitor's CPU/GPU.
+The server is not in the simulation loop. Browser mode is the default. `VITE_SIMULATION_RUNTIME=server` keeps the Python/WebSocket implementation available as a reference while parity work continues.
 
-## Phase 1 — runtime plumbing (current)
+## Connectome files
 
-- Browser Web Worker owns the sandbox lifecycle.
-- The existing frontend API surface is preserved through a local RPC bridge.
-- Browser mode is the default; `VITE_SIMULATION_RUNTIME=server` keeps the Python/WebSocket runtime available during migration.
-- The worker currently contains a **compatibility simulation only** so the UI remains interactive while the scientific graph runtime is ported.
-- Compatibility frames deliberately report `mock: true`. They must not be presented as FlyBrain output.
+The browser runtime consumes FlyBrain's `export --web` format. The current upstream export contains 166,700 neurons and the MaleCNS connection graph, split into compact gzip files. Topology is preserved while signed synaptic weights are logarithmically quantized to one byte per edge for browser delivery.
 
-## Phase 2 — graph data format
+During development the worker defaults to a commit-pinned copy of the upstream FlyBrain web export. For production, mirror the immutable files onto the same static origin:
 
-Convert the validated FlyBrain/MaleCNS data into browser-oriented immutable files:
+```bash
+cd frontend
+npm run fetch:connectome
+VITE_CONNECTOME_BASE=/connectome/ npm run build
+```
 
-- `indptr`: Uint32Array
-- `indices`: Uint32Array
-- weights: start with Float32Array for parity, then evaluate safe quantization
-- population/side metadata: compact integer dictionaries
-- soma positions: Float32Array
-- a versioned manifest containing counts, hashes, byte ranges, and provenance
+That keeps graph delivery on the CDN/static host and avoids a serverless function.
 
-Do not ship one opaque 250+ MB JSON/blob. Keep the graph binary and cacheable.
+## What is real now
 
-## Phase 3 — real neural stepper
+- The full graph is parsed into CSC TypedArrays in the browser.
+- Each agent gets its own voltage/spike state while sharing immutable graph topology.
+- The LIF update mirrors FlyBrain's browser/Python model.
+- Food odor targets ORN_DM1/ORN_DM2.
+- Loom/threat inputs target LPLC2/LC4.
+- Obstacles target LPLC1.
+- Targets use LC10a.
+- Touch uses SNta.
+- Sound uses JO-A/JO-B populations.
+- DNg100, DNa02, DNp01 and MDN drive the named motor readout.
+- Population stimulation, silence/restore and seeded synapse lesions operate on the browser neural state.
+- Forks copy neural state.
+- Checkpoints copy/restore neural state.
+- Batch probes run locally against the same shared graph.
 
-Port the Python/FlyBrain stepping path behind the same worker API:
+PLAY assistance is still an explicit game layer; PURE LAB removes it.
 
-1. TypedArray CPU reference implementation.
-2. Deterministic parity fixtures against the current Python backend.
-3. WASM/SIMD path for ordinary laptops.
-4. Optional WebGPU path when supported.
-5. Automatic capability selection; CPU must remain supported.
+## Scientific boundary
 
-The main UI thread must never run the 25.6M-edge step directly.
+The compact web export uses FlyBrain's 8-bit logarithmic weight encoding, so browser synaptic values are an approximation of the original Float32 weights. Do not describe browser results as bit-identical to the Python backend until parity tests establish the relevant tolerances.
 
-## Phase 4 — loading and caching
+The compact metadata currently does not include MaleCNS soma XYZ positions or FlyBrain photoreceptor azimuth metadata. Consequently:
 
-- Fetch graph assets from static storage/CDN, not a function.
-- Stream/download inside the worker.
-- Show explicit loading progress.
-- Cache immutable versioned graph files in the browser.
-- Reuse cached data on future visits.
-- Keep the UI shell small enough to appear immediately while graph data loads.
+- the browser runtime does not invent 3D anatomy;
+- the 3D soma viewer reports anatomy unavailable in this mode;
+- the LIGHT object is displayed to the user but is not injected into fake photoreceptors.
 
-A later optimization can evaluate graph re-encoding/sharding to reduce first-load bytes without changing scientific results.
+Those can be added by extending the static export format.
 
-## Phase 5 — remove production backend compute
+## Loading
 
-Only after parity tests pass:
+The worker streams the compressed files, reports progress, decompresses them off the main UI thread and lets normal browser HTTP caching reuse the immutable assets. If loading fails, FLYBOX pauses and shows an error; it does not silently replace real neural activity with fake data.
 
-- switch production to the browser graph runtime;
-- deploy the Vite build as static assets;
-- remove Python/FlyBrain from the production hosting image;
-- retain the Python engine as a reference/test implementation and optional local developer backend.
+A future pass can add IndexedDB persistence, service-worker prefetching and range/shard loading if first-visit startup needs further reduction.
 
-## Non-negotiables
+## Performance roadmap
 
-- No fake anatomy or fake neural claims.
-- Browser compatibility mode stays visibly marked until real graph parity passes.
-- CPU-only computers must work.
-- GPU acceleration is optional.
-- Existing PLAY/LAB/BUILD/WEIRD behavior should remain API-compatible.
-- Sessions remain ephemeral unless the user explicitly exports them.
+The current reference path is CPU + TypedArrays. Next optimization layers should preserve this CPU fallback:
+
+1. benchmark graph stepping on low/mid/high-end laptops;
+2. remove avoidable allocations and tune hot loops;
+3. evaluate WASM/SIMD;
+4. add optional WebGPU where it measurably helps;
+5. keep deterministic/parity fixtures against the Python reference.
+
+## Production cutover
+
+Before deleting the hosted Python path:
+
+- run frontend typecheck/build;
+- smoke-test a real graph load in Chrome and Firefox;
+- compare resting firing and named DN responses with the Python reference;
+- verify fork/checkpoint/intervention behavior;
+- mirror the graph files to the production static CDN;
+- deploy the Vite frontend as static assets only.
+
+The Python engine should remain in the repository as a scientific/reference implementation even after it is removed from production hosting.
