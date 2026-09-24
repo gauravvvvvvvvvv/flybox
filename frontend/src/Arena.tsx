@@ -157,7 +157,7 @@ export default function Arena({
     const rect = ev.currentTarget.getBoundingClientRect();
     const mouseX = ev.clientX - rect.left;
     const mouseY = ev.clientY - rect.top;
-    const arenaScale = Math.min(rect.width, rect.height) * zoom;
+    const arenaScale = Math.min(rect.width, rect.height);
 
     // Hit-test against the same size the canvas actually renders. The extra
     // padding makes small items such as sound/light/odor easy to remove while
