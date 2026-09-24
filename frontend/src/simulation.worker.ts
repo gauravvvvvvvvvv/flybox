@@ -674,11 +674,11 @@ async function bootConnectome() {
       );
     }
 
-    neural.clear();
-    for (const fly of flies) attachNeural(fly);
-
     runtimeStatus = "ready";
     runtimeProgress = "ready";
+
+    neural.clear();
+    for (const fly of flies) attachNeural(fly);
     addEvent(
       "system",
       `Real browser FlyBrain ready: ${loaded.meta.n.toLocaleString()} neurons / ${loaded.weights.nnz.toLocaleString()} synapses.`,
