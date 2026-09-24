@@ -19,7 +19,7 @@ This checklist is for a public open-source release.
 
 ## Product
 
-- [x] Public live URL
+- [ ] Publish the new static browser-runtime build to the production host
 - [x] Official documentation routes
 - [x] Explicit real/simulated/experimental/game provenance
 - [x] Mock mode never silently replaces production simulation
@@ -28,17 +28,17 @@ This checklist is for a public open-source release.
 - [ ] Verify production deploy from a clean browser
 - [ ] Verify `/docs` and nested docs URLs after deployment
 - [ ] Verify mobile layout
-- [ ] Verify Vercel Analytics receiving production events
+- [ ] Verify static-host cache headers for `/connectome/*` and SPA fallback routes
 
 ## Validation
 
-- [ ] Run backend tests locally on the launch commit
+- [ ] Run optional Python reference-backend tests locally on the launch commit
 - [ ] Run frontend typecheck/build locally on the launch commit
-- [ ] Run at least one smoke test using real FlyBrain
-- [ ] Confirm 3D brain view receives real xyz soma coordinates
+- [ ] Run at least one clean-browser smoke test using the real browser FlyBrain graph
+- [ ] Confirm browser mode reports anatomy unavailable until real soma XYZ metadata is added; never render fake coordinates
 - [ ] Confirm PLAY/PURE LAB labels remain visible and accurate
 - [ ] Confirm experiment export/import round trip
-- [ ] Confirm separate tabs receive separate ephemeral sessions
+- [ ] Confirm separate tabs receive separate Web Worker neural/world states
 
 ## Scientific release hygiene
 
