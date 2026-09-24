@@ -51,24 +51,23 @@ WORLD`}</Code>
   },
   {
     path: "concepts/architecture", group: "CONCEPTS", title: "System architecture",
-    description: "How the browser, simulation engine, FlyBrain model, and WebSocket session fit together.",
+    description: "How the static frontend, browser worker, and FlyBrain web export fit together.",
     body: <>
       <h2>Runtime architecture</h2>
-      <Code>{`React / Vite client
-    ↕ WebSocket
-FastAPI session runtime
+      <Code>{`Static host / CDN
     ↓
-SimulationEngine
-    ├─ World
-    ├─ FlyAgent
-    │   ├─ SensoryEncoder
-    │   ├─ FlyBrain
-    │   ├─ MotorDecoder
-    │   └─ InterventionManager
-    └─ challenges / checkpoints / couplings`}</Code>
-      <h2>Ephemeral sessions</h2><p>The live browser sandbox is owned by one WebSocket connection. Stateful browser commands travel over that same socket so the simulation remains pinned to the same server runtime. A second tab receives a different sandbox.</p>
-      <h2>Why the whole graph stays server-side</h2><p>The 25.6M-edge connectome is not a reasonable browser payload. The server performs graph propagation and emits compact frame data, bounded firing samples, metrics, and bounded anatomy samples.</p>
-      <h2>Stateless operations</h2><p>The batch probe is computationally isolated from the live sandbox and can use ordinary HTTP.</p>
+React / Vite client
+    ↓
+Browser Web Worker
+    ├─ FlyBrain web-export loader
+    ├─ real MaleCNS recurrent graph
+    ├─ neural state / LIF stepping
+    ├─ sensory encoders
+    ├─ motor decoder
+    └─ world / challenges / checkpoints`}</Code>
+      <h2>Ephemeral sessions</h2><p>Each tab owns its own in-memory Web Worker and neural/world state. Leaving the page destroys that state unless the user explicitly exports it.</p>
+      <h2>Where the computation runs</h2><p>Graph propagation and sandbox simulation run on the visitor's CPU inside the worker. The host only needs to serve the static UI and immutable connectome files.</p>
+      <h2>Reference backend</h2><p>The Python/FastAPI implementation remains in the repository for scientific comparison and development, but it is not required by the default browser runtime.</p>
     </>
   },
   {
@@ -78,15 +77,15 @@ SimulationEngine
       <h2>Neural dynamics</h2><p>FLYBOX uses FlyBrain's simplified leaky integrate-and-fire simulation. Each neural step advances the recurrent network state and produces a set of firing neuron indices.</p>
       <h2>Agent state</h2><p>A full agent owns neural membrane state, firing state, RNG state, descending-neuron traces, encoder history, motor smoothing, intervention state, body state, trajectory, energy, and world position.</p>
       <h2>Time</h2><p>The default simulation timestep is 20 ms. Speed controls change wall-clock pacing, not the timestep itself.</p>
-      <h2>Forking</h2><p>On CPU/mock backends, FLYBOX can clone the complete validated runtime state for controlled divergence experiments. Exact CUDA cloning is deliberately not claimed.</p>
+      <h2>Forking</h2><p>The browser runtime can clone its neural membrane/spike/RNG/intervention state for controlled divergence experiments. The optional Python backend has its own device-specific constraints.</p>
     </>
   },
   {
     path: "neuroscience/connectome", group: "NEUROSCIENCE", title: "Connectome data",
     description: "What anatomical and graph information FLYBOX receives from FlyBrain/MaleCNS.",
     body: <>
-      <h2>Graph</h2><p>The model exposes 166,700 neurons and approximately 25.6 million weighted synapses. Cell metadata includes named cell types and, where available, left/right side labels.</p>
-      <h2>Anatomy</h2><p>When available, FLYBOX uses MaleCNS soma coordinates. The current 3D viewer renders normalized x/y/z soma positions directly.</p>
+      <h2>Graph</h2><p>The compact browser export contains 166,700 neurons and 25,088,107 recurrent graph edges. FlyBrain drops synapses onto sensory neurons in this export when sensory_input is false, matching the default runtime configuration. Cell metadata includes named cell types and left/right side labels where available.</p>
+      <h2>Anatomy</h2><p>The current compact browser export does not include soma XYZ coordinates. Browser mode therefore reports anatomy unavailable instead of inventing positions. The optional Python reference path can still expose MaleCNS soma coordinates when present.</p>
       <h2>Named populations</h2><p>FLYBOX currently exposes a curated set including LC4, LPLC2, LPLC1, LC10a, LC6, LC16, LC15, ORN_DM1, ORN_DM2, SNta, DNg100, DNa02, DNp01, MDN, and descending_neuron.</p>
       <Note title="Anatomy is not dynamics"><p>The connectome and soma coordinates are structural data. Firing activity shown in FLYBOX is produced by the simulator, not an in-vivo recording of the same fly.</p></Note>
     </>
@@ -104,7 +103,7 @@ SimulationEngine
         <tr><td>Wall ahead</td><td>LPLC1</td><td>approach / small object</td></tr>
         <tr><td>Touch</td><td>SNta</td><td>left/right tactile input</td></tr>
         <tr><td>Sound</td><td>JO-A / JO-B</td><td>auditory drive</td></tr>
-        <tr><td>Light</td><td>visual neurons + azimuth</td><td>spatial light drive</td></tr>
+        <tr><td>Light</td><td>no neural injection in browser mode</td><td>PLAY-only orientation cue until photoreceptor azimuth metadata is added</td></tr>
       </tbody></table>
       <h2>Sensory gain</h2><p>The selected agent has a sensory-gain control that scales sandbox sensory injections without modifying the connectome graph.</p>
       <Note title="Experimental encoder"><p>These mappings are interfaces for experiments. They are not claims of complete biological transduction.</p></Note>
@@ -129,17 +128,17 @@ SimulationEngine
     path: "neuroscience/brain-viewer", group: "NEUROSCIENCE", title: "3D brain viewer",
     description: "How anatomical coordinates and live simulated activity are rendered.",
     body: <>
-      <h2>Structural layer</h2><p>The viewer receives a bounded sample of real MaleCNS x/y/z soma coordinates. The SOMA layer renders that anatomy in 3D.</p>
-      <h2>Activity layer</h2><p>The live frame carries a bounded set of currently firing neurons with mapped soma coordinates. The SPIKES layer highlights those neurons.</p>
+      <h2>Structural layer</h2><p>Browser mode does not currently receive soma XYZ coordinates from the compact FlyBrain web export, so the viewer renders no fake anatomy. The structure layer becomes available only when real coordinate metadata is supplied.</p>
+      <h2>Activity layer</h2><p>The worker tracks real simulated firing indices and named-population activity. Spatial spike glow requires real soma coordinates and remains unavailable until that metadata is added to the browser export.</p>
       <h2>Viewer controls</h2><p>Use 3D, TOP, and SIDE views; drag to rotate; use the wheel to zoom; toggle SOMA, SPIKES, and GRID; or expand the inspector.</p>
-      <h2>What is not rendered</h2><p>The browser does not currently load complete axon/dendrite centerlines or 25.6M synaptic edges. Those require a morphology loader and level-of-detail pipeline.</p>
+      <h2>What is not rendered</h2><p>The browser loads the recurrent graph for computation, but it does not render 25 million edges, full axon/dendrite morphology, or invented soma positions. Those require a separate anatomy/morphology data path and level-of-detail renderer.</p>
     </>
   },
   {
     path: "guides/experiments", group: "GUIDES", title: "Designing experiments",
     description: "How to create controlled, reproducible experiments in FLYBOX.",
     body: <>
-      <h2>Start from a controlled state</h2><p>Record the world seed, controller mode, body type, sensory gain, and intervention state. Use checkpoints or exact CPU forks when matched initial conditions matter.</p>
+      <h2>Start from a controlled state</h2><p>Record the world seed, controller mode, body type, sensory gain, and intervention state. Use browser checkpoints or exact browser neural-state forks when matched initial conditions matter.</p>
       <h2>Change one factor</h2><p>Examples include stimulus location, sensory gain, one population intervention, one synapse lesion seed, or one recent sensory history.</p>
       <h2>Measure neural and embodied outcomes separately</h2><p>Neural measures include firing count, firing-set Jaccard distance, named population firing, and DN traces. Embodied measures include trajectory separation, energy, escape events, and challenge outcome.</p>
       <h2>Export everything</h2><p>Use experiment JSON export and preserve seed/intervention metadata with any downstream plots or statistical analysis.</p>
@@ -164,7 +163,7 @@ SimulationEngine
     body: <>
       <h2>Question</h2><p>Do two identical simulated neural states diverge after receiving different recent sensory histories, even when they are subsequently placed in the same neutral conditions?</p>
       <h2>Protocol</h2>
-      <ol><li>Create an exact matched CPU/mock fork.</li><li>Expose A to food/odor history.</li><li>Expose B to loom/threat history.</li><li>Remove all cues.</li><li>Restore identical body/controller conditions.</li><li>Compare neural Jaccard divergence and physical trajectory separation.</li></ol>
+      <ol><li>Create an exact matched browser neural-state fork.</li><li>Expose A to food/odor history.</li><li>Expose B to loom/threat history.</li><li>Remove all cues.</li><li>Restore identical body/controller conditions.</li><li>Compare neural Jaccard divergence and physical trajectory separation.</li></ol>
       <Note title="Interpretation"><p>This demonstrates short-term state/history dependence in the simulation. It does not establish biological learning, associative memory, or long-term plasticity.</p></Note>
     </>
   },
@@ -189,7 +188,7 @@ SimulationEngine
     path: "reference/api", group: "REFERENCE", title: "API reference",
     description: "The supported operations exposed by the live sandbox protocol.",
     body: <>
-      <h2>Transport</h2><p>Most stateful browser operations are RPC messages sent over the live sandbox WebSocket. Paths mirror HTTP-style endpoints.</p>
+      <h2>Transport</h2><p>In default browser mode, the frontend sends RPC-style messages directly to the local Web Worker. Paths mirror HTTP-style endpoints so the same UI can still target the optional server runtime during development.</p>
       <h3>Simulation</h3><Code>{`POST /api/simulation/pause
 POST /api/simulation/resume
 POST /api/simulation/step
