@@ -1633,6 +1633,23 @@ function snapshot(): Snapshot {
   };
 }
 
+function jsonSafe<T>(value: T): T {
+  return JSON.parse(
+    JSON.stringify(value, (_key, item) => {
+      if (
+        item instanceof Float32Array ||
+        item instanceof Int32Array ||
+        item instanceof Uint8Array ||
+        item instanceof Uint16Array ||
+        item instanceof Uint32Array
+      ) {
+        return Array.from(item);
+      }
+      return item;
+    }),
+  ) as T;
+}
+
 function restore(data: Snapshot) {
   t = data.t;
   running = data.running && runtimeStatus === "ready";
@@ -1651,12 +1668,12 @@ function restore(data: Snapshot) {
       const saved = data.neural?.[fly.id];
       if (saved) {
         state.brain.restore(saved.brain);
-        state.previousFired = saved.previousFired.slice();
+        state.previousFired = Int32Array.from(saved.previousFired);
         state.dnTrace = saved.dnTrace;
         state.motorSmooth = { ...saved.motorSmooth };
         state.previousSize = { ...saved.previousSize };
         state.pending = saved.pending.map((item) => ({
-          idx: item.idx.slice(),
+          idx: Int32Array.from(item.idx),
           amount: item.amount,
         }));
         state.silenced = new Set(saved.silenced);
@@ -2089,7 +2106,7 @@ async function rpc(
       return {
         runtime: "browser-flybrain",
         exported_at: new Date().toISOString(),
-        state: snapshot(),
+        state: jsonSafe(snapshot()),
       };
     }
 
