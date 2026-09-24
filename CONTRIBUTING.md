@@ -43,9 +43,9 @@ If a contribution makes a new neuroscience claim, include a primary-source citat
 
 ## Development setup
 
-### Backend
+### Python reference backend
 
-Python 3.11+ is recommended.
+Python 3.11+ is recommended. The Python backend remains the scientific/reference implementation and optional developer comparison path; the production browser runtime does not require it.
 
 ```bash
 python -m venv .venv
@@ -70,6 +70,15 @@ cd frontend
 npm install
 npm run dev
 ```
+
+Browser mode is the default. To mirror the commit-pinned FlyBrain web export into the static site before a production build:
+
+```bash
+npm run fetch:connectome
+VITE_CONNECTOME_BASE=/connectome/ npm run build
+```
+
+The default development runtime can also fetch the pinned upstream static export directly.
 
 ### Mock mode
 
@@ -106,7 +115,7 @@ npm run typecheck
 npm run build
 ```
 
-CI runs backend tests in explicit mock mode and runs frontend typecheck/build.
+When CI is unavailable, run the backend reference tests plus frontend typecheck/build locally before merging.
 
 For changes to real-connectome behavior, also describe how you validated the change against a real FlyBrain run.
 
@@ -138,9 +147,11 @@ New environmental signals should enter through explicit encoder code. Prefer nam
 
 Interventions must alter simulation state or graph state—not only the UI—and must be serializable/loggable when possible.
 
-### Browser payloads
+### Browser runtime and payloads
 
-Do not stream the full connectome to the browser. Use bounded samples, server-side graph queries, or on-demand level-of-detail data.
+The production direction is browser-compute-first. The immutable FlyBrain web export is loaded as static data and neural stepping runs in a Web Worker.
+
+Do not move the neural stepper back into hosted request/function compute. Keep large immutable graph assets cacheable and off the main UI thread. If the browser payload changes, document its size, encoding, provenance, and first-load impact.
 
 ### Reproducibility
 

@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { get } from "./api";
+import { get, RUNTIME_MODE } from "./api";
 import type { FlyFrame } from "./types";
 
 type StaticBrain = {
@@ -232,7 +232,7 @@ export default function BrainView({ fly }: { fly: FlyFrame | undefined }) {
         <div className="brain-hud brain-hud-right">
           <span>ANATOMY</span><b>{structure?.kind === "anatomical" ? "REAL XYZ SOMA" : "UNAVAILABLE"}</b>
           <span>ACTIVITY</span><b>SIMULATED SPIKES</b>
-          <span>GRAPH</span><b>SERVER-SIDE</b>
+          <span>GRAPH</span><b>{RUNTIME_MODE === "browser" ? "BROWSER WORKER" : "SERVER-SIDE"}</b>
         </div>
         <div className="brain-axis">
           <span className="axis-x">X</span><span className="axis-y">Y</span><span className="axis-z">Z</span>
@@ -249,7 +249,7 @@ export default function BrainView({ fly }: { fly: FlyFrame | undefined }) {
       <div className="brain-legend">
         <span><i className="brain-dot brain-dot-static" /> MaleCNS soma sample</span>
         <span><i className="brain-dot brain-dot-live" /> currently firing mapped neuron</span>
-        <span className="brain-legend-note">full 25.6M-edge graph stays on server</span>
+        <span className="brain-legend-note">{RUNTIME_MODE === "browser" ? "real MaleCNS graph · FlyBrain web-quantized weights" : "full 25.6M-edge graph stays on server"}</span>
       </div>
 
       <p>

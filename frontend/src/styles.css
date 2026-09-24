@@ -41,9 +41,6 @@ header { height: 55px; border-bottom: 1px solid #222925; display: flex; align-it
 .sim-controls { border-top: 1px solid #202722; border-bottom: 0; }
 .arena-viewport { position: relative; min-height: 0; height: 100%; overflow: hidden; background: #080b09; }
 .arena { width: 100%; height: 100%; min-height: 0; display: block; cursor: crosshair; }
-.arena-zoom { position: absolute; right: 12px; bottom: 12px; display: flex; align-items: center; gap: 5px; padding: 5px; background: rgba(6,9,7,.86); border: 1px solid #2b342e; backdrop-filter: blur(8px); z-index: 5; }
-.arena-zoom button { min-width: 32px; height: 30px; padding: 0 9px; }
-.arena-zoom span { min-width: 42px; text-align: center; color: #c8d3cb; font: 10px ui-monospace, monospace; }
 aside { padding: 18px; background: #0b0e0c; overflow-y: auto; min-height: 0; }
 .panel-title-row { display: flex; justify-content: space-between; align-items: center; }
 .panel-title-row h2 { margin: 4px 0 0; font-size: 31px; }
@@ -787,4 +784,201 @@ aside { padding: 18px; background: #0b0e0c; overflow-y: auto; min-height: 0; }
 @media (max-width: 600px) {
   .arena-viewport { height: 420px; }
   .arena-zoom { right: 8px; bottom: 8px; }
+}
+
+
+/* Browser-runtime warmup and entry loader */
+.home-brain-warmup {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 14px;
+  color: #78847c;
+  font: 700 9px ui-monospace, monospace;
+  letter-spacing: .09em;
+}
+.home-brain-warmup i {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: #7e8a82;
+  box-shadow: 0 0 0 0 rgba(182,255,90,0);
+}
+.home-brain-warmup.ready { color: #b6ff5a; }
+.home-brain-warmup.ready i {
+  background: #b6ff5a;
+  box-shadow: 0 0 12px rgba(182,255,90,.7);
+}
+.home-brain-warmup.error { color: #ff9b86; }
+.home-brain-warmup.error i { background: #ff775f; }
+
+.brain-loading-screen {
+  position: relative;
+  min-height: 100vh;
+  display: grid;
+  place-items: center;
+  overflow: hidden;
+  padding: 24px;
+  background:
+    radial-gradient(circle at 50% 42%, rgba(182,255,90,.08), transparent 28rem),
+    #080a09;
+}
+.brain-loading-grid {
+  position: absolute;
+  inset: 0;
+  opacity: .18;
+  pointer-events: none;
+  background-image:
+    linear-gradient(rgba(183,255,90,.06) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(183,255,90,.06) 1px, transparent 1px);
+  background-size: 40px 40px;
+  mask-image: radial-gradient(circle at 50% 48%, black 5%, transparent 76%);
+}
+.brain-loading-card {
+  position: relative;
+  z-index: 1;
+  width: min(620px, 100%);
+  padding: 34px;
+  border: 1px solid #28312c;
+  background: rgba(10,14,11,.94);
+  box-shadow: 0 24px 90px rgba(0,0,0,.38);
+}
+.brain-loading-brand {
+  color: #eef4f0;
+  font-weight: 900;
+  letter-spacing: -.04em;
+}
+.brain-loading-kicker {
+  margin-top: 8px;
+  color: #78847c;
+  font: 700 9px ui-monospace, monospace;
+  letter-spacing: .14em;
+}
+.brain-loading-card h1 {
+  margin: 24px 0 10px;
+  color: #e9efeb;
+  font-size: clamp(35px, 7vw, 58px);
+  line-height: .96;
+  letter-spacing: -.055em;
+}
+.brain-loading-card p {
+  max-width: 510px;
+  margin: 0;
+  color: #89958d;
+  font-size: 14px;
+  line-height: 1.55;
+}
+.brain-loading-track {
+  height: 8px;
+  margin-top: 32px;
+  overflow: hidden;
+  border: 1px solid #27312b;
+  background: #101511;
+}
+.brain-loading-track i {
+  display: block;
+  height: 100%;
+  min-width: 2%;
+  background: linear-gradient(90deg, #7eb63f, #b6ff5a);
+  box-shadow: 0 0 20px rgba(182,255,90,.32);
+  transition: width .35s ease;
+}
+.brain-loading-meta {
+  display: flex;
+  justify-content: space-between;
+  gap: 20px;
+  margin-top: 10px;
+  color: #8a968e;
+  font: 700 10px ui-monospace, monospace;
+  letter-spacing: .06em;
+}
+.brain-loading-meta b { color: #cfff80; }
+.brain-loading-card small {
+  display: block;
+  margin-top: 18px;
+  color: #5f6a63;
+  font: 10px ui-monospace, monospace;
+  line-height: 1.5;
+}
+.brain-loading-card button { margin-top: 24px; }
+
+
+/* Keep high-frequency live state updates from shifting the sidebar layout. */
+.hero-state { overflow:hidden; }
+.hero-state span {
+  max-width:calc(100% - 88px);
+  min-height:28px;
+  line-height:1.05;
+  white-space:nowrap;
+  overflow:hidden;
+  text-overflow:ellipsis;
+}
+.why-card {
+  height:112px;
+  min-height:112px;
+  max-height:112px;
+  overflow:hidden;
+}
+.why-card strong {
+  min-height:32px;
+  max-height:32px;
+  line-height:16px;
+  overflow:hidden;
+  display:-webkit-box;
+  -webkit-line-clamp:2;
+  -webkit-box-orient:vertical;
+}
+.why-card p {
+  min-height:30px;
+  max-height:30px;
+  overflow:hidden;
+  display:-webkit-box;
+  -webkit-line-clamp:2;
+  -webkit-box-orient:vertical;
+}
+
+/* Brain inspector toolbar must stay inside its card at narrow sidebar widths. */
+.brain-view-controls.brain-toolbar-pro {
+  flex-wrap:wrap;
+  overflow:hidden;
+  align-items:center;
+}
+.brain-toolbar-pro .brain-segment,
+.brain-toolbar-pro .brain-layer-toggles {
+  flex:0 1 auto;
+  min-width:0;
+  flex-wrap:wrap;
+}
+.brain-toolbar-pro > span {
+  display:none;
+}
+.brain-toolbar-pro > button {
+  flex:0 0 auto;
+}
+
+
+/* Live explanation stays a fixed-size card, but never truncates its answer. */
+.why-card {
+  height:136px;
+  min-height:136px;
+  max-height:136px;
+  overflow:hidden;
+}
+.why-card strong {
+  min-height:32px;
+  max-height:32px;
+  line-height:16px;
+  overflow:hidden;
+  display:-webkit-box;
+  -webkit-line-clamp:2;
+  -webkit-box-orient:vertical;
+}
+.why-card p {
+  min-height:48px;
+  max-height:48px;
+  line-height:1.35;
+  overflow:visible;
+  display:block;
+  -webkit-line-clamp:unset;
+  -webkit-box-orient:unset;
 }

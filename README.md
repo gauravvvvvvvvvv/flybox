@@ -2,7 +2,7 @@
 
 **An open-source connectome sandbox for experimenting with a simulated fruit-fly nervous system.**
 
-[Live lab](https://flyboxlab.vercel.app/) · [Documentation](https://flyboxlab.vercel.app/docs) · [Contributing](CONTRIBUTING.md) · [License](LICENSE)
+[Browser runtime notes](docs/BROWSER_RUNTIME.md) · [Contributing](CONTRIBUTING.md) · [License](LICENSE)
 
 FLYBOX places a FlyBrain neural simulation inside an interactive closed-loop world:
 
@@ -20,28 +20,25 @@ experimental body decoder
 WORLD
 ```
 
-The current FlyBrain graph contains **166,700 neurons** and roughly **25.6 million synapses**. FLYBOX lets you stimulate and silence populations, create reproducible lesions, build sensory environments, fork neural state, compare agents, inspect live activity in 3D, run structured experiments, and export experiment data.
+The browser runtime loads **166,700 neurons** and **25,088,107 recurrent graph edges** from FlyBrain's compact MaleCNS web export. FLYBOX lets you stimulate and silence populations, create reproducible lesions, build sensory environments, fork neural state, compare agents, inspect live activity in 3D, run structured experiments, and export experiment data.
 
 FLYBOX is open source and contributions are welcome.
 
-## Try it
+## Runtime
 
-**Lab:** https://flyboxlab.vercel.app/
+The default production path is browser-compute-first:
 
-**Docs:** https://flyboxlab.vercel.app/docs
+```text
+static host / CDN
+        ↓
+React UI + immutable FlyBrain web-export files
+        ↓
+browser Web Worker
+        ↓
+real connectome stepping on the visitor's CPU
+```
 
-Useful documentation entry points:
-
-- [Introduction](https://flyboxlab.vercel.app/docs)
-- [Architecture](https://flyboxlab.vercel.app/docs/concepts/architecture)
-- [Simulation model](https://flyboxlab.vercel.app/docs/concepts/simulation)
-- [Connectome data](https://flyboxlab.vercel.app/docs/neuroscience/connectome)
-- [Sensory encoders](https://flyboxlab.vercel.app/docs/neuroscience/sensory-encoders)
-- [Motor decoder](https://flyboxlab.vercel.app/docs/neuroscience/motor-decoder)
-- [3D brain viewer](https://flyboxlab.vercel.app/docs/neuroscience/brain-viewer)
-- [Experiment guide](https://flyboxlab.vercel.app/docs/guides/experiments)
-- [API reference](https://flyboxlab.vercel.app/docs/reference/api)
-- [Scientific limitations](https://flyboxlab.vercel.app/docs/reference/limitations)
+See [docs/BROWSER_RUNTIME.md](docs/BROWSER_RUNTIME.md) for the data format, scientific boundaries, and deployment steps.
 
 ## What you can do
 
@@ -62,8 +59,8 @@ Place and manipulate:
 - descending-neuron traces;
 - DNg100, DNa02, DNp01, and MDN readouts;
 - population firing and silencing state;
-- real MaleCNS x/y/z soma coordinates in the 3D viewer;
-- bounded live spike overlays;
+- live firing sets and named-population activity;
+- anatomy only when real coordinate metadata is available; the compact browser export currently omits soma XYZ and FLYBOX does not fabricate it;
 - pairwise neural and trajectory divergence.
 
 ### Intervene
@@ -72,7 +69,7 @@ Place and manipulate:
 - silence and restore populations;
 - apply deterministic seeded synapse lesions;
 - change sensory gain;
-- fork exact CPU/mock neural state;
+- fork exact browser neural state;
 - rewind exact in-session checkpoints.
 
 ### Experiment
@@ -91,14 +88,13 @@ Included structured modes cover:
 
 The repository includes:
 
-- FastAPI backend;
 - React/Vite frontend;
-- WebSocket live-sandbox protocol;
+- browser Web Worker simulation runtime;
+- TypedArray FlyBrain/MaleCNS connectome loader and stepper;
+- optional Python/FastAPI reference backend;
 - Python and JavaScript SDKs;
 - developer console;
-- experiment import/export;
-- explicit mock mode for development;
-- CI for backend tests and frontend typecheck/build.
+- experiment import/export.
 
 ## Scientific provenance
 
@@ -106,7 +102,7 @@ FLYBOX intentionally separates five kinds of information:
 
 | Label | Meaning |
 |---|---|
-| **CONNECTOME DATA** | Structural data from FlyBrain/MaleCNS such as graph weights, cell types, side metadata, and soma coordinates |
+| **CONNECTOME DATA** | Structural data from FlyBrain/MaleCNS such as graph weights, cell types, and side metadata; soma coordinates are used only when actually present |
 | **SIMULATED NEURAL DYNAMICS** | Firing and state produced by FlyBrain |
 | **EXPERIMENTAL ENCODER** | FLYBOX mapping from sandbox events into neural input |
 | **EXPERIMENTAL DECODER** | FLYBOX mapping from neural readouts into body motion |
@@ -114,29 +110,16 @@ FLYBOX intentionally separates five kinds of information:
 
 FLYBOX does **not** claim a complete biological fly simulation, exact natural behavior, complete sensory transduction, ground-truth motor decoding, cognition, or consciousness.
 
-See the [scientific limitations](https://flyboxlab.vercel.app/docs/reference/limitations) for details.
+See [docs/BROWSER_RUNTIME.md](docs/BROWSER_RUNTIME.md) and the in-app documentation for current scientific/runtime limitations.
 
 ## Quick local setup
 
-Requirements:
+Requirements for the browser runtime:
 
-- Python 3.11+
 - Node.js 20+
 - npm
 
-### Backend
-
-```bash
-python -m venv .venv
-source .venv/bin/activate
-# Windows PowerShell: .venv\Scripts\Activate.ps1
-
-python -m pip install --upgrade pip
-pip install -r backend/requirements.txt
-
-cd backend
-python -m uvicorn app.main:app --reload
-```
+Python 3.11+ is only needed for the optional reference backend.
 
 ### Frontend
 
@@ -146,25 +129,28 @@ npm install
 npm run dev
 ```
 
-Open the Vite development URL, normally http://localhost:5173.
+Open the Vite development URL, normally http://localhost:5173. Browser mode loads the commit-pinned static FlyBrain export and pauses with an error rather than silently substituting fake neural activity if that load fails.
 
-### Mock development mode
-
-For UI/backend development without loading the real connectome:
-
-macOS/Linux:
+For an offline/static production bundle:
 
 ```bash
-export FLYLAB_MOCK=1
+npm run fetch:connectome
+VITE_CONNECTOME_BASE=/connectome/ npm run build
 ```
 
-PowerShell:
+### Optional Python reference backend
 
-```powershell
-$env:FLYLAB_MOCK="1"
+```bash
+python -m venv .venv
+source .venv/bin/activate
+# Windows PowerShell: .venv\Scripts\Activate.ps1
+python -m pip install --upgrade pip
+pip install -r backend/requirements.txt
+cd backend
+python -m uvicorn app.main:app --reload
 ```
 
-Mock mode is explicit and visibly labeled. Production never silently falls back to fake neural data.
+Set `VITE_SIMULATION_RUNTIME=server` during frontend development to compare against it.
 
 ## Tests
 
@@ -248,9 +234,9 @@ Please do not report security vulnerabilities through public issues. See [SECURI
 
 ## Deployment
 
-The repository contains `Dockerfile.vercel`, which builds the Vite frontend, installs the Python backend, bundles FlyBrain data at image-build time, and serves the frontend/API/WebSocket from one origin.
+Production can be a static Vite deployment. Mirror the immutable connectome files with `npm run fetch:connectome`, build with `VITE_CONNECTOME_BASE=/connectome/`, and serve `frontend/dist` from a CDN/static host. Neural stepping and sandbox state stay in the visitor's browser, so no hosted simulation CPU is required.
 
-The production sandbox is intentionally ephemeral: there are no user accounts or persistent personal worlds.
+The Python backend remains available as a reference/development path and does not need to be deployed with the public browser runtime.
 
 ---
 

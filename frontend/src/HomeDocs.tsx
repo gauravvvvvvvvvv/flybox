@@ -1,4 +1,5 @@
 import type { ReactNode } from "react";
+import type { RuntimeState } from "./types";
 
 type EnterHandler = () => void;
 
@@ -9,7 +10,7 @@ const WORLD_ELEMENTS = [
   ["●", "LOOM", "Threat-like expanding object. Angular growth drives LPLC2; a close threat can also drive LC4. PLAY treats it as something to evade."],
   ["☠", "PREDATOR", "A draggable threat that can catch an agent. PLAY prioritizes predator avoidance over food, targets, and wandering."],
   ["🔊", "SOUND", "Pulsing sound source. Drives JO-A/JO-B auditory populations. PLAY gives it a weaker orienting response."],
-  ["💡", "LIGHT", "Projects onto FlyBrain photoreceptors using stored azimuth metadata. PLAY gives it a weaker orientation/phototaxis-like response."],
+  ["💡", "LIGHT", "Visible world cue. The compact browser connectome export does not include photoreceptor azimuth metadata, so LIGHT currently affects only the explicitly labeled PLAY orientation assist and is not injected into fake photoreceptors."],
   ["█", "WALL", "Solid obstacle. Nearby frontal walls drive an experimental LPLC1 small-object/approach signal; PLAY turns away before collision. Physical contact also drives SNta touch."],
   ["🏁", "GOAL", "A challenge destination. In PLAY it behaves like a target and is used by race-style modes."],
 ] as const;
@@ -27,7 +28,7 @@ const BEHAVIOR = [
 
 const MODES = [
   ["PLAY", "The fun layer. Real FlyBrain neural activity runs underneath, while clearly labeled game assists make the body forage, orient, avoid threats/walls, explore, feed, race, and survive."],
-  ["LAB", "The inspection layer. See real simulated firing, named motor populations, sensory channels, anatomical soma positions, interventions, divergence, and batch probes. PURE LAB removes the PLAY locomotion assists."],
+  ["LAB", "The inspection layer. See real simulated firing, named motor populations, sensory channels, interventions, divergence, batch probes, and real MaleCNS soma anatomy when the compact anatomy asset is present. PURE LAB removes the PLAY locomotion assists."],
   ["BUILD", "World editor. Place, drag, remove, randomize, and paint elements. Also controls day/night presentation, wind, daily seeded worlds, and ephemeral-session information."],
   ["WEIRD", "Experimental toys: body swaps, neural fireworks, brain tone, brain forks, brain-to-brain artificial coupling, Chaos Button, and Cinema Mode."],
 ] as const;
@@ -64,7 +65,7 @@ const SENSORS = [
   ["Wall ahead", "LPLC1", "Experimental small-object / approach encoder"],
   ["Wall contact", "SNta", "Tactile input"],
   ["Sound", "JO-A / JO-B", "Auditory input"],
-  ["Light", "Photoreceptors + azimuth metadata", "Spatial light input"],
+  ["Light", "No neural injection in browser mode", "PLAY-only orientation cue until photoreceptor metadata is added"],
 ] as const;
 
 const MOTORS = [
@@ -83,13 +84,13 @@ function DocsCard({ icon, title, children }: { icon?: string; title: string; chi
   );
 }
 
-export default function HomeDocs({ onEnter }: { onEnter: EnterHandler }) {
+export default function HomeDocs({ onEnter, runtime }: { onEnter: EnterHandler; runtime?: RuntimeState }) {
   return (
     <main className="home-docs">
       <div className="home-doc-grid" />
 
       <nav className="home-doc-nav">
-        <a className="home-doc-logo" href="#top">FLYBOX</a><a className="home-live-url" href="https://flyboxlab.vercel.app/" target="_blank" rel="noreferrer">flyboxlab.vercel.app</a>
+        <a className="home-doc-logo" href="#top">FLYBOX</a><span className="home-live-url">BROWSER-COMPUTE RUNTIME</span>
         <div className="home-doc-links">
           <a href="#controls">CONTROLS</a>
           <a href="#elements">ELEMENTS</a>
@@ -114,9 +115,19 @@ export default function HomeDocs({ onEnter }: { onEnter: EnterHandler }) {
           <a className="home-secondary" href="#controls">QUICK OVERVIEW ↓</a>
           <a className="home-secondary" href="/docs">FULL TECHNICAL DOCS ↗</a>
         </div>
+        <div className={`home-brain-warmup ${runtime?.status ?? "loading"}`}>
+          <i />
+          <span>
+            {runtime?.status === "ready"
+              ? "BRAIN READY"
+              : runtime?.status === "error"
+                ? "BRAIN LOAD ERROR"
+                : "PREPARING BRAIN IN THE BACKGROUND"}
+          </span>
+        </div>
         <div className="home-stat-row">
           <div><strong>166,700</strong><span>NEURONS</span></div>
-          <div><strong>25.6M</strong><span>SYNAPSES</span></div>
+          <div><strong>25.09M</strong><span>BROWSER GRAPH EDGES</span></div>
           <div><strong>20 ms</strong><span>NEURAL STEP</span></div>
           <div><strong>EPHEMERAL</strong><span>NO ACCOUNTS / NO SAVED SESSION</span></div>
         </div>
@@ -138,7 +149,7 @@ export default function HomeDocs({ onEnter }: { onEnter: EnterHandler }) {
           <DocsCard icon="⌫" title="RIGHT CLICK"><p><b>Right-click any placed world element to remove that exact element immediately.</b> Right-click empty space does nothing.</p></DocsCard>
           <DocsCard icon="⌨" title="POSSESS / WASD"><p>Possess the selected body and drive it with WASD or arrow keys while its neural simulation continues receiving sensory input.</p></DocsCard>
           <DocsCard icon="⏱" title="TIME CONTROLS"><p>Pause, resume, advance exactly +20 ms, reset, or run at 0.05× / 0.25× / 1× / 2× / 5× / 10×.</p></DocsCard>
-          <DocsCard icon="↶" title="SAVE MOMENT / REWIND"><p>On CPU/mock runs, save exact neural/game checkpoints and rewind to them later in the same temporary sandbox.</p></DocsCard>
+          <DocsCard icon="↶" title="SAVE MOMENT / REWIND"><p>Save the exact browser neural/game state and rewind to it later in the same temporary sandbox.</p></DocsCard>
         </div>
       </section>
 
@@ -244,7 +255,7 @@ export default function HomeDocs({ onEnter }: { onEnter: EnterHandler }) {
           <div><h2>LAB tools</h2><p>Open the simulation instead of only watching the body.</p></div>
         </div>
         <div className="home-doc-grid-cards">
-          <DocsCard title="LIVE CONNECTOME VIEW"><p>Uses real MaleCNS soma coordinates when available, with bounded live firing overlays. If coordinates are unavailable, FLYBOX says so instead of drawing fake anatomy.</p></DocsCard>
+          <DocsCard title="LIVE CONNECTOME VIEW"><p>Shows live real-connectome firing metrics and population activity, plus real MaleCNS soma XYZ anatomy from the compact browser anatomy asset.</p></DocsCard>
           <DocsCard title="BRAIN SURGERY"><p>Stimulate, silence, or restore named populations. Apply deterministic seeded random synapse lesions.</p></DocsCard>
           <DocsCard title="SENSORY GAIN"><p>Scale how strongly the selected agent receives sandbox sensory injections.</p></DocsCard>
           <DocsCard title="A/B DIVERGENCE"><p>When multiple agents exist, compare firing-set Jaccard divergence, physical separation, and energy differences live.</p></DocsCard>

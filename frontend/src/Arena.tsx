@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useRef } from "react";
 import type { Frame, WorldKind } from "./types";
 
 export type ArenaTool = "inspect" | WorldKind;
@@ -30,12 +30,6 @@ export default function Arena({
   const dragObject = useRef<string | null>(null);
   const dragFly = useRef<string | null>(null);
   const lastPaint = useRef(0);
-  const [zoom, setZoom] = useState(1);
-
-  const cameraCenter = useMemo(() => {
-    const selected = frame?.flies.find((fly) => fly.id === selectedFly);
-    return selected ? { x: selected.x, y: selected.y } : { x: 0.5, y: 0.5 };
-  }, [frame, selectedFly]);
 
   useEffect(() => {
     const canvas = ref.current;
@@ -53,17 +47,7 @@ export default function Arena({
     const h = rect.height;
     ctx.clearRect(0, 0, w, h);
 
-    // Camera: zoom around the selected fly so it remains easy to follow.
-    // At 1× the whole normalized arena is visible. Higher zoom levels follow
-    // the selected fly without making the page itself larger.
-    const activeCameraX = zoom <= 1 ? 0.5 : cameraCenter.x;
-    const activeCameraY = zoom <= 1 ? 0.5 : cameraCenter.y;
-    const cameraX = activeCameraX * w;
-    const cameraY = activeCameraY * h;
     ctx.save();
-    ctx.translate(w / 2, h / 2);
-    ctx.scale(zoom, zoom);
-    ctx.translate(-cameraX, -cameraY);
 
     const daylight = frame.world.daylight ?? 1;
     const shade = Math.round(8 + daylight * 10);
@@ -144,7 +128,7 @@ export default function Arena({
         52,
       );
     }
-  }, [frame, selectedFly, neuralOverlay, zoom, cameraCenter]);
+  }, [frame, selectedFly, neuralOverlay]);
 
   function screenToWorld(clientX: number, clientY: number, rect: DOMRect) {
     const sx = clientX - rect.left;
@@ -287,28 +271,6 @@ export default function Arena({
         onPointerCancel={onPointerUp}
         onContextMenu={onContextMenu}
       />
-      <div className="arena-zoom" aria-label="Arena zoom controls">
-        <button
-          type="button"
-          title="Zoom out"
-          onClick={() => setZoom((value) => Math.max(1, Number((value - 0.5).toFixed(1))))}
-          disabled={zoom <= 1}
-        >
-          −
-        </button>
-        <span>{zoom.toFixed(1)}×</span>
-        <button
-          type="button"
-          title="Zoom in"
-          onClick={() => setZoom((value) => Math.min(4, Number((value + 0.5).toFixed(1))))}
-          disabled={zoom >= 4}
-        >
-          +
-        </button>
-        <button type="button" title="Reset zoom" onClick={() => setZoom(1)}>
-          FIT
-        </button>
-      </div>
     </div>
   );
 }

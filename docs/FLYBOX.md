@@ -2,7 +2,7 @@
 
 FLYBOX is a disposable interactive sandbox around a simplified fruit-fly connectome simulation.
 
-**Public site:** https://flyboxlab.vercel.app/
+**Runtime:** browser-compute-first; production hosting can be static/CDN-only.
 
 The product has two goals at the same time:
 
@@ -41,17 +41,17 @@ The simulation is closed-loop: the body moves, that changes what it senses next,
 
 ## 2. Neural model
 
-The real FlyBrain backend is used by default.
+The real FlyBrain-compatible browser runtime is used by default.
 
-Current headline scale:
+Current browser graph scale:
 
 - 166,700 neurons
-- ~25.6 million synapses
+- 25,088,107 recurrent graph edges in the compact web export
 - default neural timestep: 20 ms
 
-FLYBOX calls real `brain.step(...)` operations and reads real simulated firing output from FlyBrain.
+The worker loads FlyBrain's commit-pinned web export, reconstructs the CSC graph into TypedArrays, and advances real recurrent leaky-integrate-and-fire state locally on the visitor's CPU.
 
-Mock mode exists only for development/testing and is explicitly labeled.
+The Python/FastAPI FlyBrain implementation remains in the repository as an optional reference/development backend. Browser mode does not silently fall back to fake neural activity if the real graph fails to load.
 
 ---
 
@@ -86,10 +86,9 @@ Important details:
 
 - A second tab receives a different sandbox.
 - Other visitors do not share the same world.
-- The live browser sandbox is owned by one WebSocket connection.
-- Stateful commands travel over that same socket so the sandbox remains pinned to one live Vercel Function instance.
-- Leaving/closing the page sends a best-effort close event.
-- Disconnected sessions are destroyed after a short grace period.
+- The live sandbox is owned by one browser Web Worker.
+- Stateful commands are local worker RPC messages; no server affinity is needed.
+- Leaving/closing the page terminates the worker and its in-memory neural/world state.
 - Refreshing creates a new sandbox.
 - Time Machine checkpoints exist only in the current sandbox.
 - JSON export is explicit and user-initiated.
@@ -303,11 +302,12 @@ Purpose:
 
 Neural input:
 
-- FlyBrain photoreceptors using stored azimuth metadata
+- none in the current compact browser export because it does not carry the photoreceptor azimuth metadata required for a defensible spatial light injection
 
 PLAY behavior:
 
-- weaker phototaxis/orientation-like response
+- weaker orientation-like game assist only
+- the UI must not present that assist as photoreceptor activity
 
 ## WALL / OBSTACLE
 
@@ -665,7 +665,7 @@ Purpose:
 
 Procedure:
 
-1. FLYBOX creates an exact CPU/mock neural-state fork from PRIME.
+1. FLYBOX creates an exact browser neural-state fork from PRIME.
 2. Both bodies are temporarily switched to stationary SYNTH bodies.
 3. Brain A receives a short food/odor sensory history.
 4. Brain B receives a short loom/threat sensory history.
@@ -716,7 +716,7 @@ It is simply the first agent.
 
 Where supported, an agent can be forked from the current moment.
 
-Exact CPU/mock fork attempts to copy:
+Exact browser neural-state fork copies:
 
 - neural membrane state
 - spike state
@@ -730,7 +730,7 @@ Exact CPU/mock fork attempts to copy:
 - energy
 - trajectory/game state
 
-Exact CUDA state copying is not claimed until validated.
+The optional Python/CUDA reference backend has separate state-copying constraints.
 
 ---
 
@@ -738,7 +738,7 @@ Exact CUDA state copying is not claimed until validated.
 
 ## SAVE MOMENT
 
-On CPU/mock:
+In the browser runtime:
 
 stores a bounded checkpoint containing:
 
@@ -836,7 +836,7 @@ When multiple agents exist:
 
 ## Batch science probe
 
-Real FlyBrain only.
+Runs locally against the real browser FlyBrain graph.
 
 Runs multiple neural states with:
 
@@ -965,14 +965,15 @@ challenge race
 
 Backend:
 
-- FastAPI
-- WebSocket live sandbox protocol
+- browser Web Worker runtime
+- TypedArray connectome loader/stepper
+- optional FastAPI/WebSocket reference backend
 
 The browser sends stateful sandbox commands over the same WebSocket that owns the temporary sandbox.
 
-This is important for serverless/Vercel hosting because it avoids relying on HTTP instance affinity.
+This removes hosted simulation compute entirely from the default production path.
 
-The stateless batch probe can use ordinary HTTP.
+The batch probe also runs locally in the browser against the shared immutable graph.
 
 Major operations include:
 

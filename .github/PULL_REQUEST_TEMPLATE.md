@@ -14,10 +14,10 @@ Describe the change and why it is needed.
 
 ## Validation
 
-- [ ] Backend tests pass (`pytest -q`)
+- [ ] Python reference-backend tests pass (`pytest -q`) when relevant
 - [ ] Frontend typecheck passes (`npm run typecheck`)
 - [ ] Frontend build passes (`npm run build`)
-- [ ] Tested with real FlyBrain when this change affects real-connectome behavior
+- [ ] Tested with the real browser FlyBrain graph when this change affects real-connectome behavior
 - [ ] Not applicable / explained below
 
 Validation notes:
@@ -41,4 +41,4 @@ Screenshots or video for user-visible changes:
 
 ## Performance / compatibility
 
-Describe any impact on WebSocket payload size, frame rate, memory, agent count, browser compatibility, or deployment.
+Describe any impact on worker frame rate, graph download size/cacheability, memory, agent count, browser compatibility, or static deployment.

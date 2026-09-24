@@ -3,7 +3,7 @@ import Arena, { type ArenaTool } from "./Arena";
 import BrainView from "./BrainView";
 import HomeDocs from "./HomeDocs";
 import { closeSession, connectFrames, del, get, post } from "./api";
-import type { Frame, Metadata, WorldKind } from "./types";
+import type { Frame, Metadata, RuntimeState, WorldKind } from "./types";
 
 const populations = [
   "LC4", "LPLC2", "LPLC1", "LC10a", "ORN_DM1", "ORN_DM2",
@@ -24,6 +24,57 @@ const tools: { kind: ArenaTool; label: string }[] = [
 ];
 
 type Surface = "PLAY" | "LAB" | "BUILD" | "WEIRD";
+
+function stateFontSize(state?: string) {
+  const length = state?.length ?? 0;
+  if (length > 18) return 14;
+  if (length > 13) return 16;
+  if (length > 9) return 19;
+  return 23;
+}
+
+function whyDetailFontSize(text: string) {
+  if (text.length > 180) return 8;
+  if (text.length > 140) return 8.5;
+  if (text.length > 105) return 9;
+  return 10;
+}
+
+function brainLoadProgress(runtime?: RuntimeState) {
+  if (!runtime) return 1;
+  if (runtime.status === "ready") return 100;
+  if (runtime.status === "error") return 100;
+
+  const progress = (runtime.progress ?? "").toLowerCase();
+  if (progress.includes("manifest")) return 4;
+  if (progress.includes("neuron labels")) return 8;
+  if (progress.startsWith("labels")) return 10;
+
+  const mb = progress.match(/connectome\s+(\d+(?:\.\d+)?)\s*\/\s*(\d+(?:\.\d+)?)\s*mb/);
+  if (mb) {
+    const done = Number(mb[1]);
+    const total = Math.max(1, Number(mb[2]));
+    return Math.min(88, 12 + (done / total) * 76);
+  }
+
+  if (progress.includes("connectome decompressing")) return 91;
+  if (progress.includes("wiring")) return 97;
+  if (progress.includes("ready")) return 100;
+  return 6;
+}
+
+function brainLoadLabel(runtime?: RuntimeState) {
+  const progress = (runtime?.progress ?? "").toLowerCase();
+  if (!runtime) return "STARTING BROWSER LAB";
+  if (runtime.status === "error") return "COULD NOT PREPARE BRAIN";
+  if (runtime.status === "ready") return "BRAIN READY";
+  if (progress.includes("manifest")) return "CHECKING CONNECTOME";
+  if (progress.includes("label")) return "PREPARING NEURON LABELS";
+  if (progress.includes("decompress")) return "UNPACKING CONNECTOME";
+  if (progress.includes("wiring")) return "WIRING 25 MILLION CONNECTIONS";
+  if (progress.includes("connectome")) return "LOADING CONNECTOME";
+  return "PREPARING NEURAL SANDBOX";
+}
 
 export default function App() {
   const [entered, setEntered] = useState(false);
@@ -53,7 +104,7 @@ export default function App() {
     get("/api/metadata")
       .then(setMetadata)
       .catch((e) => setError(e instanceof Error ? e.message : String(e)));
-  }, [entered]);
+  }, [entered, frame?.runtime?.status]);
 
   useEffect(() => {
     const discard = () => closeSession();
@@ -64,15 +115,14 @@ export default function App() {
   }, []);
 
   useEffect(() => {
-    if (!entered) return;
     return connectFrames(
       (data) => {
         setFrame(data);
-        setError(null);
+        setError(data.runtime?.status === "error" ? data.runtime.error ?? "Browser connectome failed to load." : null);
       },
       (message) => setError(message),
     );
-  }, [entered]);
+  }, []);
 
   useEffect(() => {
     if (!entered) return;
@@ -90,6 +140,26 @@ export default function App() {
     () => frame?.flies.find((item) => item.id === selectedFly) ?? frame?.flies[0],
     [frame, selectedFly],
   );
+
+  const runtimeStatus = frame?.runtime?.status;
+  const statusText =
+    runtimeStatus === "loading"
+      ? "LOADING BRAIN"
+      : runtimeStatus === "error"
+        ? "BRAIN ERROR"
+        : frame?.running
+          ? "LIVE"
+          : "PAUSED";
+  const runtimeText =
+    runtimeStatus === "loading"
+      ? frame?.runtime?.progress ?? "loading connectome"
+      : runtimeStatus === "ready"
+        ? "LOCAL CPU · REAL CONNECTOME"
+        : runtimeStatus === "error"
+          ? "CONNECTOME LOAD FAILED"
+          : frame?.mock
+            ? "MOCK MODE"
+            : null;
 
   useEffect(() => {
     if (fly) setNameDraft(fly.name);
@@ -237,11 +307,45 @@ export default function App() {
   if (!entered) {
     return (
       <HomeDocs
+        runtime={frame?.runtime}
         onEnter={() => {
           setEntered(true);
           post("/api/simulation/resume").catch((e) => setError(e instanceof Error ? e.message : String(e)));
         }}
       />
+    );
+  }
+
+  if (frame?.runtime?.status !== "ready") {
+    const progress = brainLoadProgress(frame?.runtime);
+    const failed = frame?.runtime?.status === "error";
+    return (
+      <main className="brain-loading-screen" aria-live="polite">
+        <div className="brain-loading-grid" />
+        <section className="brain-loading-card">
+          <div className="brain-loading-brand">FLYBOX</div>
+          <div className="brain-loading-kicker">BROWSER-COMPUTE LAB</div>
+          <h1>{failed ? "The brain couldn't start." : "Preparing the fly brain."}</h1>
+          <p>
+            {failed
+              ? frame?.runtime?.error ?? "The connectome could not be loaded."
+              : "Everything runs on this device. No install, account, or setup required."}
+          </p>
+          {!failed && (
+            <>
+              <div className="brain-loading-track" role="progressbar" aria-valuemin={0} aria-valuemax={100} aria-valuenow={Math.round(progress)}>
+                <i style={{ width: `${progress}%` }} />
+              </div>
+              <div className="brain-loading-meta">
+                <span>{brainLoadLabel(frame?.runtime)}</span>
+                <b>{Math.round(progress)}%</b>
+              </div>
+              <small>First visit can take a little longer. Later visits reuse the browser cache.</small>
+            </>
+          )}
+          {failed && <button onClick={() => window.location.reload()}>TRY AGAIN</button>}
+        </section>
+      </main>
     );
   }
 
@@ -254,9 +358,9 @@ export default function App() {
             <button key={item} className={surface === item ? "active" : ""} onClick={() => setSurface(item)}>{item}</button>
           ))}
         </nav>
-        <div className="status"><span className="live-dot" /> {frame?.running ? "LIVE" : "PAUSED"}</div>
+        <div className="status"><span className="live-dot" /> {statusText}</div>
         <div className="header-stat">{frame?.flies.length ?? 0} AGENTS · {frame?.world.objects.length ?? 0} OBJECTS · EPHEMERAL</div>
-        {frame?.mock && <div className="mock">MOCK MODE</div>}
+        {runtimeText && <div className="mock">{runtimeText}</div>}
       </header>
 
       {error && <div className="error-banner">{error}</div>}
@@ -318,7 +422,7 @@ export default function App() {
           {surface === "PLAY" && (
             <>
               <div className="hero-state">
-                <span>{fly?.state ?? "…"}</span>
+                <span style={{ fontSize: stateFontSize(fly?.state) }}>{fly?.state ?? "…"}</span>
                 <strong>{fly?.energy.toFixed(0) ?? "—"}%</strong>
                 <small>ENERGY</small>
               </div>
@@ -370,7 +474,7 @@ export default function App() {
                 <Signal label="TOUCH" value={fly?.senses?.touch ?? 0} />
               </section>
 
-              <ChallengePanel frame={frame} onStart={(id) => safe(() => post(`/api/challenges/${id}`))} onReveal={() => safe(() => post("/api/challenges/mystery/reveal"))} />
+              <ChallengePanel frame={frame} onStart={(id: string) => safe(() => post(`/api/challenges/${id}`))} onReveal={() => safe(() => post("/api/challenges/mystery/reveal"))} />
 
               <section className="control-section">
                 <div className="section-label">ACHIEVEMENTS</div>
@@ -595,50 +699,80 @@ function AgentHeader({ fly, nameDraft, setNameDraft, onRename, onSpawn, onFork }
 }
 
 function WhyCard({ fly }: any) {
-  if (!fly) return null;
-  let title = "It is deciding what to do.";
-  let detail = "The connectome is running; PLAY may also add the labeled locomotion assist so the embodied agent can explore.";
+  const [display, setDisplay] = useState({
+    title: "It is deciding what to do.",
+    detail: "The connectome is running; PLAY may also add the labeled locomotion assist so the embodied agent can explore.",
+  });
+  const pending = useRef<{ title: string; detail: string } | null>(null);
+  const lastSwap = useRef(0);
 
-  if (!fly.alive) {
-    title = fly.state === "CAUGHT" ? "The predator caught it." : "It ran out of energy.";
-    detail = "Death/energy are game mechanics; the neural state is still reported separately.";
-  } else if (fly.state === "FEEDING") {
-    title = "It found food and stopped to eat.";
-    detail = "Food creates an ORN_DM1/ORN_DM2 odor input. Feeding and energy gain are game mechanics.";
-  } else if (fly.state === "ESCAPING") {
-    title = "Its escape channel fired strongly.";
-    detail = "Looming/threat encoders can drive LPLC2/LC4; the displayed escape readout is DNp01.";
-  } else if (fly.state === "POSSESSED") {
-    title = "You are driving the body.";
-    detail = "WASD adds an explicit manual body command while the connectome keeps receiving sensory input.";
-  } else if (Math.abs(fly.assists?.obstacle ?? 0) > 0.10) {
-    title = "It sees a wall in its path and is turning away.";
-    detail = "Wall avoidance is a PLAY reflex before collision; physical contact also produces an SNta touch input and a stronger tactile turn.";
-  } else if (Math.abs(fly.assists?.edge ?? 0) > 0.10) {
-    title = "It is turning back into the arena.";
-    detail = "PLAY treats the box edge like a wall before impact. If it still reaches the boundary, the body reflects and continues instead of getting pinned.";
-  } else if (Math.abs(fly.assists?.target ?? 0) > 0.08) {
-    title = "It is steering toward the target.";
-    detail = "TARGET/GOAL steering is an explicit PLAY assist. The target also drives the experimental LC10a sensory encoder; PURE LAB removes the body assist.";
-  } else if (Math.abs(fly.assists?.orient ?? 0) > 0.05) {
-    title = "It is orienting toward a sound or light.";
-    detail = "This visible orientation is a PLAY game assist; the sensory stimulus is still injected through its separately labeled neural encoder.";
-  } else if ((fly.senses?.food_odor ?? 0) > 0.15) {
-    title = "It can smell nearby food.";
-    detail = `Food odor input is ${fly.senses.food_odor.toFixed(2)}. In PLAY, hunger makes that cue more influential on the game locomotion assist.`;
-  } else if ((fly.senses?.loom ?? 0) > 0.08) {
-    title = "Something is expanding in its view.";
-    detail = "Angular growth drives the experimental LPLC2 looming encoder; downstream connectome activity remains simulated FlyBrain output.";
-  } else if (fly.controller === "lab" && Math.abs(fly.speed) < 0.01) {
-    title = "It is sitting still — and that is valid.";
-    detail = "LAB removes the locomotion assist. This simplified spiking connectome often does not produce a strong DNg100 walking command from ordinary sensory input.";
-  }
+  const next = useMemo(() => {
+    if (!fly) return null;
+
+    let title = "It is deciding what to do.";
+    let detail = "The connectome is running; PLAY may also add the labeled locomotion assist so the embodied agent can explore.";
+
+    if (!fly.alive) {
+      title = fly.state === "CAUGHT" ? "The predator caught it." : "It ran out of energy.";
+      detail = "Death/energy are game mechanics; the neural state is still reported separately.";
+    } else if (fly.state === "FEEDING") {
+      title = "It found food and stopped to eat.";
+      detail = "Food creates an ORN_DM1/ORN_DM2 odor input. Feeding and energy gain are game mechanics.";
+    } else if (fly.state === "ESCAPING") {
+      title = "Its escape channel fired strongly.";
+      detail = "Looming/threat encoders can drive LPLC2/LC4; the displayed escape readout is DNp01.";
+    } else if (fly.state === "POSSESSED") {
+      title = "You are driving the body.";
+      detail = "WASD adds an explicit manual body command while the connectome keeps receiving sensory input.";
+    } else if (Math.abs(fly.assists?.obstacle ?? 0) > 0.10) {
+      title = "It sees a wall in its path and is turning away.";
+      detail = "Wall avoidance is a PLAY reflex before collision; physical contact also produces an SNta touch input and a stronger tactile turn.";
+    } else if (Math.abs(fly.assists?.edge ?? 0) > 0.10) {
+      title = "It is turning back into the arena.";
+      detail = "PLAY treats the box edge like a wall before impact. If it still reaches the boundary, the body reflects and continues instead of getting pinned.";
+    } else if (Math.abs(fly.assists?.target ?? 0) > 0.08) {
+      title = "It is steering toward the target.";
+      detail = "TARGET/GOAL steering is an explicit PLAY assist. The target also drives the experimental LC10a sensory encoder; PURE LAB removes the body assist.";
+    } else if (Math.abs(fly.assists?.orient ?? 0) > 0.05) {
+      title = "It is orienting toward a sound or light.";
+      detail = "This visible orientation is a PLAY game assist; the sensory stimulus is still injected through its separately labeled neural encoder.";
+    } else if ((fly.senses?.food_odor ?? 0) > 0.15) {
+      title = "It can smell nearby food.";
+      detail = `Food odor input is ${fly.senses.food_odor.toFixed(2)}. In PLAY, hunger makes that cue more influential on the game locomotion assist.`;
+    } else if ((fly.senses?.loom ?? 0) > 0.08) {
+      title = "Something is expanding in its view.";
+      detail = "Angular growth drives the experimental LPLC2 looming encoder; downstream connectome activity remains simulated FlyBrain output.";
+    } else if (fly.controller === "lab" && Math.abs(fly.speed) < 0.01) {
+      title = "It is sitting still — and that is valid.";
+      detail = "LAB removes the locomotion assist. This simplified spiking connectome often does not produce a strong DNg100 walking command from ordinary sensory input.";
+    }
+
+    return { title, detail };
+  }, [fly?.alive, fly?.state, fly?.controller, fly?.speed, fly?.assists?.obstacle, fly?.assists?.edge, fly?.assists?.target, fly?.assists?.orient, fly?.senses?.food_odor, fly?.senses?.loom]);
+
+  useEffect(() => {
+    if (!next) return;
+    pending.current = next;
+
+    const elapsed = performance.now() - lastSwap.current;
+    const wait = Math.max(0, 850 - elapsed);
+    const timer = window.setTimeout(() => {
+      if (!pending.current) return;
+      setDisplay(pending.current);
+      pending.current = null;
+      lastSwap.current = performance.now();
+    }, wait);
+
+    return () => window.clearTimeout(timer);
+  }, [next?.title, next?.detail]);
+
+  if (!fly) return null;
 
   return (
     <section className="why-card">
-      <span>WHY?</span>
-      <strong>{title}</strong>
-      <p>{detail}</p>
+      <span>WHAT IS IT DOING?</span>
+      <strong>{display.title}</strong>
+      <p style={{ fontSize: whyDetailFontSize(display.detail) }}>{display.detail}</p>
     </section>
   );
 }
