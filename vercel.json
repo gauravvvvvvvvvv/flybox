@@ -5,7 +5,7 @@
   "buildCommand": "python -m venv /tmp/flybox-build && /tmp/flybox-build/bin/pip install --disable-pip-version-check --no-cache-dir numpy && cd frontend && PATH=/tmp/flybox-build/bin:$PATH npm run build",
   "outputDirectory": "frontend/dist",
   "git": {
-    "deploymentEnabled": false
+    "deploymentEnabled": true
   },
   "headers": [
     {
