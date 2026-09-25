@@ -2,6 +2,8 @@
 
 **An open-source connectome sandbox for experimenting with a simulated fruit-fly nervous system.**
 
+<a href="https://www.producthunt.com/products/flybox-2?embed=true&utm_source=badge-featured&utm_medium=badge&utm_campaign=badge-flybox-2" target="_blank" rel="noopener noreferrer"><img alt="FLYBOX - Explore a fruit-fly connectome inside a living sandbox | Product Hunt" width="250" height="54" src="https://api.producthunt.com/widgets/embed-image/v1/featured.svg?post_id=1260414&theme=dark"></a>
+
 [Browser runtime notes](docs/BROWSER_RUNTIME.md) · [Contributing](CONTRIBUTING.md) · [License](LICENSE)
 
 FLYBOX places a FlyBrain neural simulation inside an interactive closed-loop world:
