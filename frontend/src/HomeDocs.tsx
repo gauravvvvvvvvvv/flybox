@@ -99,7 +99,7 @@ export default function HomeDocs({ onEnter, runtime }: { onEnter: EnterHandler; 
           <a href="#science">SCIENCE</a>
           <a href="/docs">DEEP DOCS ↗</a>
         </div>
-        <button className="home-enter-mini" onClick={onEnter}>OPEN SANDBOX</button>
+        <a className="home-product-hunt" href="https://www.producthunt.com/products/flybox-2?embed=true&utm_source=badge-featured&utm_medium=badge&utm_campaign=badge-flybox-2" target="_blank" rel="noopener noreferrer" aria-label="FLYBOX on Product Hunt"><img src="https://api.producthunt.com/widgets/embed-image/v1/featured.svg?post_id=1260414&theme=dark" alt="FLYBOX - Explore a fruit-fly connectome inside a living sandbox | Product Hunt" width="250" height="54" /></a>
       </nav>
 
       <section className="home-hero" id="top">
